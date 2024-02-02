@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"src/internal/server"
+	"src/internal/utils"
 	"testing"
 )
 
@@ -88,6 +89,13 @@ var testParams = []testParams_PrintLeftoverLabelHandler{
 		expectedStatusCode: http.StatusBadRequest,
 		expectedMessage:    "invalid quantity: value must be a positive integer\n",
 	},
+	// should fail on PDF generation
+	{
+		reqMethod:          "POST",
+		reqBody:            bytes.NewBufferString(`{"labelText":"PDF GENERATION FAIL - WRITE ERROR","quantity":2}`),
+		expectedStatusCode: http.StatusInternalServerError,
+		expectedMessage:    "Error preparing label for printing\n",
+	},
 	// should pass
 	{
 		reqMethod:          "POST",
@@ -112,10 +120,9 @@ func TestPrintLeftoverLabelController(t *testing.T) {
 		requests = append(requests, req)
 	}
 
-	// TODO: integrate generatePdf functionality
 	// TODO: integrate printPdf functionality
 	// initialize test controller
-	c := server.NewPrintLeftoverLabelController(nil, nil)
+	c := server.NewPrintLeftoverLabelController(utils.MockGeneratePdf, nil)
 
 	// record and validate the way each request is handled
 	for i, r := range requests[:] {
