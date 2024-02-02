@@ -1,5 +1,12 @@
 package main
 
+import (
+	"log"
+	"src/internal/server"
+)
+
 func main() {
-	// todo
+	s := server.InitializeServer()
+
+	log.Fatal(s.ListenAndServe())
 }
