@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,9 +16,86 @@ type testParams_PrintLeftoverLabelHandler struct {
 	expectedMessage    string
 }
 
-// TODO: add tests once the implementation for PrintLeftoverLabelController is complete
 // range of test cases to iterate
-var testParams = []testParams_PrintLeftoverLabelHandler{}
+var testParams = []testParams_PrintLeftoverLabelHandler{
+	// should fail because incorrect HTTP method
+	{
+		reqMethod:          "GET",
+		reqBody:            nil,
+		expectedStatusCode: http.StatusBadRequest,
+		expectedMessage:    "This endpoint only supports POST requests\n",
+	},
+	// should fail because incorrect HTTP method
+	{
+		reqMethod:          "PUT",
+		reqBody:            nil,
+		expectedStatusCode: http.StatusBadRequest,
+		expectedMessage:    "This endpoint only supports POST requests\n",
+	},
+	// should fail because incorrect HTTP method
+	{
+		reqMethod:          "CHANGE",
+		reqBody:            nil,
+		expectedStatusCode: http.StatusBadRequest,
+		expectedMessage:    "This endpoint only supports POST requests\n",
+	},
+	// should fail because the body is malformed
+	{
+		reqMethod:          "POST",
+		reqBody:            bytes.NewBufferString("some text"),
+		expectedStatusCode: http.StatusBadRequest,
+		expectedMessage:    "Malformed request body\n",
+	},
+	// should fail because the body is missing the quantity field
+	{
+		reqMethod:          "POST",
+		reqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor"}`),
+		expectedStatusCode: http.StatusBadRequest,
+		expectedMessage:    "invalid quantity: value must be a positive integer\n",
+	},
+	// should fail because the body is missing the labelText field
+	{
+		reqMethod:          "POST",
+		reqBody:            bytes.NewBufferString(`{"quantity":2}`),
+		expectedStatusCode: http.StatusBadRequest,
+		expectedMessage:    "no value provided for labelText\n",
+	},
+	// should fail because the body has an additional, unknown field
+	{
+		reqMethod:          "POST",
+		reqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor","quantity":2,"foo":"bar"}`),
+		expectedStatusCode: http.StatusBadRequest,
+		expectedMessage:    "json: unknown field \"foo\"\n",
+	},
+	// should fail because a payload field has an incorrect type
+	{
+		reqMethod:          "POST",
+		reqBody:            bytes.NewBufferString(`{"labelText":2,"quantity":2}`),
+		expectedStatusCode: http.StatusBadRequest,
+		expectedMessage:    "Malformed request body\n",
+	},
+	// should fail because payload is too large
+	{
+		reqMethod:          "POST",
+		reqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor. Aenean massa.","quantity":2}`),
+		expectedStatusCode: http.StatusRequestEntityTooLarge,
+		expectedMessage:    "Request body is too large\n",
+	},
+	// should fail because quantity is zero
+	{
+		reqMethod:          "POST",
+		reqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor","quantity":0}`),
+		expectedStatusCode: http.StatusBadRequest,
+		expectedMessage:    "invalid quantity: value must be a positive integer\n",
+	},
+	// should pass
+	{
+		reqMethod:          "POST",
+		reqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor","quantity":2}`),
+		expectedStatusCode: http.StatusOK,
+		expectedMessage:    `{"status":"success"}`,
+	},
+}
 
 func TestPrintLeftoverLabelController(t *testing.T) {
 
