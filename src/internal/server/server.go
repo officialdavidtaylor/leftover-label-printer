@@ -6,8 +6,16 @@ import (
 )
 
 func InitializeServer() *http.Server {
+	/* -- INITIALIZE CONTROLLERS -- */
+	// TODO: replace nil values with functions once implemented
+	c := NewPrintLeftoverLabelController(nil, nil)
+
 	/* -- CONFIGURE ROUTING -- */
 	mux := http.NewServeMux()
+
+	/* ENDPOINTS */
+	// handle label print requests
+	mux.HandleFunc("/api/v1/print-leftover-label", c.PrintLeftoverLabelHandler)
 
 	/* -- DEFINE SERVER PROPERTIES -- */
 	s := &http.Server{
