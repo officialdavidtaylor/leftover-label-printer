@@ -143,7 +143,13 @@ func (c *PrintLeftoverLabelController) PrintLeftoverLabelHandler(w http.Response
 		return
 	}
 
-	// TODO: integrate pdf printer
+	out, err := c.printPdf(rb.Quantity, filePathName)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, "Error printing label", http.StatusInternalServerError)
+		return
+	}
+	fmt.Println("function output: ", string(out))
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"success"}`))

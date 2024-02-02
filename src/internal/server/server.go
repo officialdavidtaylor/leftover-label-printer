@@ -3,13 +3,13 @@ package server
 import (
 	"net/http"
 	"src/internal/pdf"
+	"src/internal/system"
 	"time"
 )
 
 func InitializeServer() *http.Server {
 	/* -- INITIALIZE CONTROLLERS -- */
-	// TODO: replace nil values with functions once implemented
-	c := NewPrintLeftoverLabelController(pdf.GeneratePdf, nil)
+	c := NewPrintLeftoverLabelController(pdf.GeneratePdf, system.PrintPdf)
 
 	/* -- CONFIGURE ROUTING -- */
 	mux := http.NewServeMux()

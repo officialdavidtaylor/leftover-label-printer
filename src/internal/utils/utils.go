@@ -28,3 +28,17 @@ func MockGeneratePdf(labelText string) ([]byte, error) {
 
 	return pdf, nil
 }
+
+// # Mock of the PDF printing function
+//
+// To induce a failure:
+//   - pass a quantity >= 100
+func MockPrintPdf(quantity int, filePathName string) ([]byte, error) {
+	fmt.Println("printPdf mock function called")
+
+	if quantity == 0 || quantity >= 100 {
+		return []byte("exit code 5"), errors.New(fmt.Sprintf("Invalid label quantity: %v", quantity))
+	}
+
+	return []byte("exit code 0"), nil
+}

@@ -96,6 +96,13 @@ var testParams = []testParams_PrintLeftoverLabelHandler{
 		expectedStatusCode: http.StatusInternalServerError,
 		expectedMessage:    "Error preparing label for printing\n",
 	},
+	// should fail on PDF printing (quantity 100 is the trigger)
+	{
+		reqMethod:          "POST",
+		reqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor","quantity":100}`),
+		expectedStatusCode: http.StatusInternalServerError,
+		expectedMessage:    "Error printing label\n",
+	},
 	// should pass
 	{
 		reqMethod:          "POST",
@@ -120,9 +127,8 @@ func TestPrintLeftoverLabelController(t *testing.T) {
 		requests = append(requests, req)
 	}
 
-	// TODO: integrate printPdf functionality
 	// initialize test controller
-	c := server.NewPrintLeftoverLabelController(utils.MockGeneratePdf, nil)
+	c := server.NewPrintLeftoverLabelController(utils.MockGeneratePdf, utils.MockPrintPdf)
 
 	// record and validate the way each request is handled
 	for i, r := range requests[:] {
