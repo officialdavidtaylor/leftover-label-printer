@@ -128,11 +128,20 @@ func (c *PrintLeftoverLabelController) PrintLeftoverLabelHandler(w http.Response
 	}
 	defer f.Close()
 
-	// TODO: integrate pdf generator
 	// generate pdf document as []byte
+	p, err := c.generatePdf(rb.LabelText)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, "Error preparing label for printing", http.StatusInternalServerError)
+		return
+	}
 
-	// TODO: integrate file writing (upon adding pdf generator)
 	// write PDF data to file
+	if n, err := f.Write(p); err != nil || n == 0 {
+		fmt.Println(err)
+		http.Error(w, "Error preparing label for printing", http.StatusInternalServerError)
+		return
+	}
 
 	// TODO: integrate pdf printer
 
