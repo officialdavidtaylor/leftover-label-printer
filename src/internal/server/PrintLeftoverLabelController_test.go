@@ -89,6 +89,13 @@ var testParams = []testParams_PrintLeftoverLabelHandler{
 		expectedStatusCode: http.StatusBadRequest,
 		expectedMessage:    "invalid quantity: value must be a positive integer\n",
 	},
+	// should fail because the dateVerb has too many characters
+	{
+		reqMethod:          "POST",
+		reqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor","quantity":100, "dateVerb":"this is far too long:"}`),
+		expectedStatusCode: http.StatusBadRequest,
+		expectedMessage:    "value for dateVerb has too many characters: try something shorter\n",
+	},
 	// should fail on PDF generation
 	{
 		reqMethod:          "POST",

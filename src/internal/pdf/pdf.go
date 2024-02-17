@@ -18,8 +18,16 @@ const (
 //go:embed fonts/Rubik-Regular.ttf
 var rubikRegular []byte
 
-// Generate a PDF document consisting of the provided `labelText` and the current date
-func GeneratePdf(labelText string) ([]byte, error) {
+const DEFAULT_DATEVERB = "made:"
+
+// Generate a PDF document consisting of the provided `labelText`, optional `dateVerb`, and the current date
+func GeneratePdf(labelText string, dateVerb string) ([]byte, error) {
+
+	// ensure dateVerb isn't empty: if not provided, set to the default value
+	if dateVerb == "" {
+		dateVerb = DEFAULT_DATEVERB
+	}
+
 	// initialize PDF
 	pdf := gopdf.GoPdf{}
 	pdf.Start(gopdf.Config{PageSize: gopdf.Rect{W: PAGE_WIDTH, H: PAGE_HEIGHT}})
@@ -49,14 +57,14 @@ func GeneratePdf(labelText string) ([]byte, error) {
 		return nil, err
 	}
 
-	// write the "made on" date information in the lower-left corner of the document
+	// describe what the date information corresponds to (made, bought, etc) in the lower-left corner of the document
 	pdf.SetXY(PAGE_MARGIN, 57)
 	pdf.SetTextColor(85, 85, 85)
 	err = pdf.SetFont("Rubik-Regular", "", 10)
 	if err != nil {
 		return nil, err
 	}
-	err = pdf.Cell(nil, "made:")
+	err = pdf.Cell(nil, dateVerb)
 	if err != nil {
 		return nil, err
 	}
