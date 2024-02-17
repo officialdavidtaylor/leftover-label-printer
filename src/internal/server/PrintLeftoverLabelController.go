@@ -105,6 +105,11 @@ func (c *PrintLeftoverLabelController) PrintLeftoverLabelHandler(w http.Response
 
 	// ensure the directory to save the PDF to exists
 	absPath, err := filepath.Abs(FILE_PATH)
+	if err != nil {
+		fmt.Println("filepath.Abs error", FILE_PATH)
+		http.Error(w, "", http.StatusInternalServerError)
+		return
+	}
 
 	if _, err := os.Stat(absPath); os.IsNotExist(err) {
 		if err := os.MkdirAll(FILE_PATH, os.ModePerm); err != nil {
