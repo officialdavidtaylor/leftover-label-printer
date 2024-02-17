@@ -39,20 +39,38 @@ func GeneratePdf(labelText string) ([]byte, error) {
 
 	// write the label text in the upper-left corner of the document
 	pdf.SetXY(PAGE_MARGIN, 10)
-	err = pdf.SetFont("Rubik-Regular", "", 16)
 	pdf.SetTextColor(0, 0, 0)
-	pdf.Cell(nil, labelText)
+	err = pdf.SetFont("Rubik-Regular", "", 16)
+	if err != nil {
+		return nil, err
+	}
+	err = pdf.Cell(nil, labelText)
+	if err != nil {
+		return nil, err
+	}
 
 	// write the "made on" date information in the lower-left corner of the document
 	pdf.SetXY(PAGE_MARGIN, 57)
-	err = pdf.SetFont("Rubik-Regular", "", 10)
 	pdf.SetTextColor(85, 85, 85)
-	pdf.Cell(nil, "made:")
+	err = pdf.SetFont("Rubik-Regular", "", 10)
+	if err != nil {
+		return nil, err
+	}
+	err = pdf.Cell(nil, "made:")
+	if err != nil {
+		return nil, err
+	}
 
 	pdf.SetXY(PAGE_MARGIN, 69)
-	err = pdf.SetFont("Rubik-Regular", "", 12)
 	pdf.SetTextColor(0, 0, 0)
-	pdf.Cell(nil, time.Now().Local().Format(time.DateOnly))
+	err = pdf.SetFont("Rubik-Regular", "", 12)
+	if err != nil {
+		return nil, err
+	}
+	err = pdf.Cell(nil, time.Now().Local().Format(time.DateOnly))
+	if err != nil {
+		return nil, err
+	}
 
 	// write the document to a byte buffer
 	b := bytes.NewBuffer([]byte{})
