@@ -23,7 +23,7 @@ func MockGeneratePdf(labelText string) ([]byte, error) {
 	}
 
 	if labelText == "PDF GENERATION FAIL - WRITE ERROR" {
-		return nil, errors.New("Error writing PDF")
+		return nil, errors.New("error writing pdf")
 	}
 
 	return pdf, nil
