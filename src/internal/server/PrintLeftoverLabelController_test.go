@@ -2,162 +2,117 @@ package server_test
 
 import (
 	"bytes"
-	"io"
 	"net/http"
-	"net/http/httptest"
 	"src/internal/server"
 	"src/internal/utils"
 	"testing"
 )
 
-type testParams_PrintLeftoverLabelHandler struct {
-	reqMethod          string
-	reqBody            io.Reader
-	expectedStatusCode int
-	expectedMessage    string
-}
-
-// range of test cases to iterate
-var testParams = []testParams_PrintLeftoverLabelHandler{
-	// should fail because incorrect HTTP method
-	{
-		reqMethod:          "GET",
-		reqBody:            nil,
-		expectedStatusCode: http.StatusBadRequest,
-		expectedMessage:    "This endpoint only supports POST requests\n",
-	},
-	// should fail because incorrect HTTP method
-	{
-		reqMethod:          "PUT",
-		reqBody:            nil,
-		expectedStatusCode: http.StatusBadRequest,
-		expectedMessage:    "This endpoint only supports POST requests\n",
-	},
-	// should fail because incorrect HTTP method
-	{
-		reqMethod:          "CHANGE",
-		reqBody:            nil,
-		expectedStatusCode: http.StatusBadRequest,
-		expectedMessage:    "This endpoint only supports POST requests\n",
-	},
-	// should fail because the body is malformed
-	{
-		reqMethod:          "POST",
-		reqBody:            bytes.NewBufferString("some text"),
-		expectedStatusCode: http.StatusBadRequest,
-		expectedMessage:    "Malformed request body\n",
-	},
-	// should fail because the body is missing the quantity field
-	{
-		reqMethod:          "POST",
-		reqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor"}`),
-		expectedStatusCode: http.StatusBadRequest,
-		expectedMessage:    "invalid quantity: value must be a positive integer\n",
-	},
-	// should fail because the body is missing the labelText field
-	{
-		reqMethod:          "POST",
-		reqBody:            bytes.NewBufferString(`{"quantity":2}`),
-		expectedStatusCode: http.StatusBadRequest,
-		expectedMessage:    "no value provided for labelText\n",
-	},
-	// should fail because the body has an additional, unknown field
-	{
-		reqMethod:          "POST",
-		reqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor","quantity":2,"foo":"bar"}`),
-		expectedStatusCode: http.StatusBadRequest,
-		expectedMessage:    "json: unknown field \"foo\"\n",
-	},
-	// should fail because a payload field has an incorrect type
-	{
-		reqMethod:          "POST",
-		reqBody:            bytes.NewBufferString(`{"labelText":2,"quantity":2}`),
-		expectedStatusCode: http.StatusBadRequest,
-		expectedMessage:    "Malformed request body\n",
-	},
-	// should fail because payload is too large
-	{
-		reqMethod:          "POST",
-		reqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor. Aenean massa.","quantity":2}`),
-		expectedStatusCode: http.StatusRequestEntityTooLarge,
-		expectedMessage:    "Request body is too large\n",
-	},
-	// should fail because quantity is zero
-	{
-		reqMethod:          "POST",
-		reqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor","quantity":0}`),
-		expectedStatusCode: http.StatusBadRequest,
-		expectedMessage:    "invalid quantity: value must be a positive integer\n",
-	},
-	// should fail because the dateVerb has too many characters
-	{
-		reqMethod:          "POST",
-		reqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor","quantity":100, "dateVerb":"this is far too long:"}`),
-		expectedStatusCode: http.StatusBadRequest,
-		expectedMessage:    "value for dateVerb has too many characters: try something shorter\n",
-	},
-	// should fail on PDF generation
-	{
-		reqMethod:          "POST",
-		reqBody:            bytes.NewBufferString(`{"labelText":"PDF GENERATION FAIL - WRITE ERROR","quantity":2}`),
-		expectedStatusCode: http.StatusInternalServerError,
-		expectedMessage:    "Error preparing label for printing\n",
-	},
-	// should fail on PDF printing (quantity 100 is the trigger)
-	{
-		reqMethod:          "POST",
-		reqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor","quantity":100}`),
-		expectedStatusCode: http.StatusInternalServerError,
-		expectedMessage:    "Error printing label\n",
-	},
-	// should pass
-	{
-		reqMethod:          "POST",
-		reqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor","quantity":2}`),
-		expectedStatusCode: http.StatusOK,
-		expectedMessage:    `{"status":"success"}`,
-	},
-}
-
 func TestPrintLeftoverLabelController(t *testing.T) {
-
-	// convert each test case into an http request, store requests in a slice for easy iteration
-	var requests []*http.Request
-
-	for _, a := range testParams {
-		// construct a request to pass to our handler based on the params defined above
-		req, err := http.NewRequest(a.reqMethod, "/", a.reqBody)
-		if err != nil {
-			t.Log(err)
-			t.Fail()
-		}
-		requests = append(requests, req)
+	// range of test cases to iterate
+	var testRequests = []utils.RequestParams{
+		// should fail because incorrect HTTP method
+		{
+			ReqMethod:          "GET",
+			ReqBody:            nil,
+			ExpectedStatusCode: http.StatusBadRequest,
+			ExpectedMessage:    "This endpoint only supports POST requests\n",
+		},
+		// should fail because incorrect HTTP method
+		{
+			ReqMethod:          "PUT",
+			ReqBody:            nil,
+			ExpectedStatusCode: http.StatusBadRequest,
+			ExpectedMessage:    "This endpoint only supports POST requests\n",
+		},
+		// should fail because incorrect HTTP method
+		{
+			ReqMethod:          "CHANGE",
+			ReqBody:            nil,
+			ExpectedStatusCode: http.StatusBadRequest,
+			ExpectedMessage:    "This endpoint only supports POST requests\n",
+		},
+		// should fail because the body is malformed
+		{
+			ReqMethod:          "POST",
+			ReqBody:            bytes.NewBufferString("some text"),
+			ExpectedStatusCode: http.StatusBadRequest,
+			ExpectedMessage:    "Malformed request body\n",
+		},
+		// should fail because the body is missing the quantity field
+		{
+			ReqMethod:          "POST",
+			ReqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor"}`),
+			ExpectedStatusCode: http.StatusBadRequest,
+			ExpectedMessage:    "invalid quantity: value must be a positive integer\n",
+		},
+		// should fail because the body is missing the labelText field
+		{
+			ReqMethod:          "POST",
+			ReqBody:            bytes.NewBufferString(`{"quantity":2}`),
+			ExpectedStatusCode: http.StatusBadRequest,
+			ExpectedMessage:    "no value provided for labelText\n",
+		},
+		// should fail because the body has an additional, unknown field
+		{
+			ReqMethod:          "POST",
+			ReqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor","quantity":2,"foo":"bar"}`),
+			ExpectedStatusCode: http.StatusBadRequest,
+			ExpectedMessage:    "json: unknown field \"foo\"\n",
+		},
+		// should fail because a payload field has an incorrect type
+		{
+			ReqMethod:          "POST",
+			ReqBody:            bytes.NewBufferString(`{"labelText":2,"quantity":2}`),
+			ExpectedStatusCode: http.StatusBadRequest,
+			ExpectedMessage:    "Malformed request body\n",
+		},
+		// should fail because payload is too large
+		{
+			ReqMethod:          "POST",
+			ReqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor. Aenean massa.","quantity":2}`),
+			ExpectedStatusCode: http.StatusRequestEntityTooLarge,
+			ExpectedMessage:    "Request body is too large\n",
+		},
+		// should fail because quantity is zero
+		{
+			ReqMethod:          "POST",
+			ReqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor","quantity":0}`),
+			ExpectedStatusCode: http.StatusBadRequest,
+			ExpectedMessage:    "invalid quantity: value must be a positive integer\n",
+		},
+		// should fail because the dateVerb has too many characters
+		{
+			ReqMethod:          "POST",
+			ReqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor","quantity":100, "dateVerb":"this is far too long:"}`),
+			ExpectedStatusCode: http.StatusBadRequest,
+			ExpectedMessage:    "value for dateVerb has too many characters: try something shorter\n",
+		},
+		// should fail on PDF generation
+		{
+			ReqMethod:          "POST",
+			ReqBody:            bytes.NewBufferString(`{"labelText":"PDF GENERATION FAIL - WRITE ERROR","quantity":2}`),
+			ExpectedStatusCode: http.StatusInternalServerError,
+			ExpectedMessage:    "Error preparing label for printing\n",
+		},
+		// should fail on PDF printing (quantity 100 is the trigger)
+		{
+			ReqMethod:          "POST",
+			ReqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor","quantity":100}`),
+			ExpectedStatusCode: http.StatusInternalServerError,
+			ExpectedMessage:    "Error printing label\n",
+		},
+		// should pass
+		{
+			ReqMethod:          "POST",
+			ReqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor","quantity":2}`),
+			ExpectedStatusCode: http.StatusOK,
+			ExpectedMessage:    `{"status":"success"}`,
+		},
 	}
 
 	// initialize test controller
 	c := server.NewPrintLeftoverLabelController(utils.MockGeneratePdf, utils.MockPrintPdf)
 
-	// record and validate the way each request is handled
-	for i, r := range requests[:] {
-		expectedStatusCode := testParams[i].expectedStatusCode
-		expectedMessage := testParams[i].expectedMessage
-
-		// We create a ResponseRecorder (which satisfies http.ResponseWriter) to record the response.
-		rr := httptest.NewRecorder()
-		handler := http.HandlerFunc(c.PrintLeftoverLabelHandler)
-		// Our handlers satisfy http.Handler, so we can call their ServeHTTP method
-		// directly and pass in our Request and ResponseRecorder.
-		t.Logf("test: %v", i)
-		handler.ServeHTTP(rr, r)
-		// Check the status code is what we expect.
-		if status := rr.Code; status != expectedStatusCode {
-			t.Errorf("handler returned incorrect status code: got %v want %v",
-				status, expectedStatusCode)
-		}
-		// Check the response reqBody is what we expect.
-		if rr.Body.String() != expectedMessage {
-			t.Errorf("handler returned unexpected message: \ngot: %v\nwant: %v",
-				rr.Body.String(), expectedMessage)
-		}
-	}
+	utils.RequestTester(t, testRequests, c.PrintLeftoverLabelHandler)
 }
