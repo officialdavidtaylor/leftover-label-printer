@@ -9,14 +9,17 @@ import (
 
 func InitializeServer() *http.Server {
 	/* -- INITIALIZE CONTROLLERS -- */
-	c := NewPrintLeftoverLabelController(pdf.GeneratePdf, system.PrintPdf)
+	healthController := HealthController{}
+	printController := NewPrintLeftoverLabelController(pdf.GeneratePdf, system.PrintPdf)
 
 	/* -- CONFIGURE ROUTING -- */
 	mux := http.NewServeMux()
 
 	/* ENDPOINTS */
+	// handle health checks
+	mux.HandleFunc("/api/v1/health", healthController.CheckHealthHandler)
 	// handle label print requests
-	mux.HandleFunc("/api/v1/print-leftover-label", c.PrintLeftoverLabelHandler)
+	mux.HandleFunc("/api/v1/print-leftover-label", printController.PrintLeftoverLabelHandler)
 
 	/* -- DEFINE SERVER PROPERTIES -- */
 	s := &http.Server{
