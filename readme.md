@@ -19,6 +19,8 @@ To Compile for Raspberry Pi, you will need to pull the repo and execute the foll
 >
 > **Note:** if compiling for the Pi Zero or one of the older models, use `GOARM=6` to ensure compatiblity
 
+Once the server is up and running, you can use this [Siri Shortcut](https://www.icloud.com/shortcuts/ada1cd06bab0419cabb734dcaa3383d1) to start printing!
+
 My goal is to eventually serve the binary via GitHub releases... that's a Phase 2™️ goal at this point.
 
 ## Dev instructions:
