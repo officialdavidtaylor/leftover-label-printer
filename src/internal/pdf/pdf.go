@@ -18,14 +18,14 @@ const (
 //go:embed fonts/Rubik-Regular.ttf
 var rubikRegular []byte
 
-const DEFAULT_DATEVERB = "made:"
+const DEFAULT_DATE_DESCRIPTOR = "made:"
 
-// Generate a PDF document consisting of the provided `labelText`, optional `dateVerb`, and the current date
-func GeneratePdf(labelText string, dateVerb string) ([]byte, error) {
+// Generate a PDF document consisting of the provided `labelText`, optional `dateDescriptor`, and the current date
+func GeneratePdf(labelText string, dateDescriptor string) ([]byte, error) {
 
-	// ensure dateVerb isn't empty: if not provided, set to the default value
-	if dateVerb == "" {
-		dateVerb = DEFAULT_DATEVERB
+	// ensure dateDescriptor isn't empty: if not provided, set to the default value
+	if dateDescriptor == "" {
+		dateDescriptor = DEFAULT_DATE_DESCRIPTOR
 	}
 
 	// initialize PDF
@@ -64,7 +64,7 @@ func GeneratePdf(labelText string, dateVerb string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = pdf.Cell(nil, dateVerb)
+	err = pdf.Cell(nil, dateDescriptor)
 	if err != nil {
 		return nil, err
 	}

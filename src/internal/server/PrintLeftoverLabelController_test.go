@@ -81,12 +81,12 @@ func TestPrintLeftoverLabelController(t *testing.T) {
 			ExpectedStatusCode: http.StatusBadRequest,
 			ExpectedMessage:    "invalid quantity: value must be a positive integer\n",
 		},
-		// should fail because the dateVerb has too many characters
+		// should fail because the dateDescriptor has too many characters
 		{
 			ReqMethod:          "POST",
-			ReqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor","quantity":100, "dateVerb":"this is far too long:"}`),
+			ReqBody:            bytes.NewBufferString(`{"labelText":"Lorem ipsum dolor","quantity":100, "dateDescriptor":"this is far too long:"}`),
 			ExpectedStatusCode: http.StatusBadRequest,
-			ExpectedMessage:    "value for dateVerb has too many characters: try something shorter\n",
+			ExpectedMessage:    "value for dateDescriptor has too many characters: try something shorter\n",
 		},
 		// should fail on PDF generation
 		{

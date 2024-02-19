@@ -19,7 +19,7 @@ var pdf []byte
 // To induce a failure:
 //   - labelText length > 64 characters
 //   - labelText == "PDF GENERATION FAIL - WRITE ERROR"
-func MockGeneratePdf(labelText string, dateVerb string) ([]byte, error) {
+func MockGeneratePdf(labelText string, dateDescriptor string) ([]byte, error) {
 	fmt.Println("generatePdf mock function called")
 
 	if len(labelText) > 64 {
