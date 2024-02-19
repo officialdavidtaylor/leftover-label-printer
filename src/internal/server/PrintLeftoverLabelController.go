@@ -11,11 +11,11 @@ import (
 )
 
 type PrintLeftoverLabelController struct {
-	generatePdf func(labelText string, dateVerb string) ([]byte, error)
+	generatePdf func(labelText string, dateDescriptor string) ([]byte, error)
 	printPdf    func(quantity int, filePathName string) ([]byte, error)
 }
 
-func NewPrintLeftoverLabelController(generatePdf func(lt string, dv string) ([]byte, error), printPdf func(q int, fpn string) ([]byte, error)) *PrintLeftoverLabelController {
+func NewPrintLeftoverLabelController(generatePdf func(lt string, dd string) ([]byte, error), printPdf func(q int, fpn string) ([]byte, error)) *PrintLeftoverLabelController {
 
 	return &PrintLeftoverLabelController{
 		generatePdf: generatePdf,
@@ -24,9 +24,9 @@ func NewPrintLeftoverLabelController(generatePdf func(lt string, dv string) ([]b
 }
 
 type PrintLabelRequestBody struct {
-	LabelText string `json:"labelText"`
-	Quantity  int    `json:"quantity"`
-	DateVerb  string `json:"dateVerb"`
+	LabelText      string `json:"labelText"`
+	Quantity       int    `json:"quantity"`
+	DateDescriptor string `json:"dateDescriptor"`
 }
 
 const FILE_PATH = "./tmp"
@@ -34,7 +34,7 @@ const FILE_PATH = "./tmp"
 // the label itself can only display a few words, so 128 bytes is more than enough for a reasonable request
 // yet it is small enough to very quickly recognize if the request is unreasonably large
 const MAX_REQUEST_BODY_SIZE = 128
-const MAX_DATEVERB_SIZE = 20
+const MAX_DATE_DESCRIPTOR_SIZE = 20
 
 func (c *PrintLeftoverLabelController) PrintLeftoverLabelHandler(w http.ResponseWriter, r *http.Request) {
 	/* -- FAIL FAST -- */
@@ -103,8 +103,8 @@ func (c *PrintLeftoverLabelController) PrintLeftoverLabelHandler(w http.Response
 		return
 	}
 	// this is an optional parameter; if unset, the default is "made:"
-	if len(rb.DateVerb) > MAX_DATEVERB_SIZE {
-		msg := "value for dateVerb has too many characters: try something shorter"
+	if len(rb.DateDescriptor) > MAX_DATE_DESCRIPTOR_SIZE {
+		msg := "value for dateDescriptor has too many characters: try something shorter"
 		http.Error(w, msg, http.StatusBadRequest)
 		return
 	}
@@ -142,7 +142,7 @@ func (c *PrintLeftoverLabelController) PrintLeftoverLabelHandler(w http.Response
 	defer f.Close()
 
 	// generate pdf document as []byte
-	p, err := c.generatePdf(rb.LabelText, rb.DateVerb)
+	p, err := c.generatePdf(rb.LabelText, rb.DateDescriptor)
 	if err != nil {
 		fmt.Println(err)
 		http.Error(w, "Error preparing label for printing", http.StatusInternalServerError)

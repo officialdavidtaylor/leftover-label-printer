@@ -15,10 +15,10 @@ const FILE_PATH = "./tmp"
 func TestPdfGeneration_Simple(t *testing.T) {
 	// define test value(s)
 	labelText := "Lorem ipsum dolor"
-	dateVerb := "bought:"
+	dateDescriptor := "bought:"
 
 	// generate PDF as []byte
-	b, err := pdf.GeneratePdf(labelText, dateVerb)
+	b, err := pdf.GeneratePdf(labelText, dateDescriptor)
 	if err != nil {
 		t.Log("Failed to generate PDF", err.Error())
 		t.Fail()
