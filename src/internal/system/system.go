@@ -20,8 +20,8 @@ func PrintPdf(quantity int, filePathName string) ([]byte, error) {
 	// use linux "lp" program to print the newly minted PDF
 	return exec.Command("lp",
 		"-n", fmt.Sprint(quantity),
-		"-o",
-		"Collate=True",
+		"-o", "Collate=True",
+		"-o", "orientation-requested=4", // rotate print by 90°
 		"-d", "dymo",
 		filePathName,
 	).Output()

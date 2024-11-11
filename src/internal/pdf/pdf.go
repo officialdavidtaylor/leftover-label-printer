@@ -10,10 +10,13 @@ import (
 )
 
 const (
-	PAGE_WIDTH  = 162
-	PAGE_HEIGHT = 90
-	PAGE_MARGIN = 10
+	PAGE_WIDTH  = 153
+	PAGE_HEIGHT = 72
+	PAGE_MARGIN = 8
 )
+
+//go:embed fonts/PermanentMarker-Regular.ttf
+var permanentMarkerRegular []byte
 
 //go:embed fonts/Rubik-Regular.ttf
 var rubikRegular []byte
@@ -34,8 +37,13 @@ func GeneratePdf(labelText string, dateDescriptor string) ([]byte, error) {
 	pdf.AddPage()
 
 	// load the (embedded) font file for adding text to the document
+	pmr := bytes.NewReader(permanentMarkerRegular)
+	err := pdf.AddTTFFontByReader("PermanentMarker-Regular", pmr)
+	if err != nil {
+		return nil, err
+	}
 	rr := bytes.NewReader(rubikRegular)
-	err := pdf.AddTTFFontByReader("Rubik-Regular", rr)
+	err = pdf.AddTTFFontByReader("Rubik-Regular", rr)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +56,7 @@ func GeneratePdf(labelText string, dateDescriptor string) ([]byte, error) {
 	// write the label text in the upper-left corner of the document
 	pdf.SetXY(PAGE_MARGIN, 10)
 	pdf.SetTextColor(0, 0, 0)
-	err = pdf.SetFont("Rubik-Regular", "", 16)
+	err = pdf.SetFont("PermanentMarker-Regular", "", 14)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +66,7 @@ func GeneratePdf(labelText string, dateDescriptor string) ([]byte, error) {
 	}
 
 	// describe what the date information corresponds to (made, bought, etc) in the lower-left corner of the document
-	pdf.SetXY(PAGE_MARGIN, 57)
+	pdf.SetXY(PAGE_MARGIN, 43)
 	pdf.SetTextColor(85, 85, 85)
 	err = pdf.SetFont("Rubik-Regular", "", 10)
 	if err != nil {
@@ -69,9 +77,9 @@ func GeneratePdf(labelText string, dateDescriptor string) ([]byte, error) {
 		return nil, err
 	}
 
-	pdf.SetXY(PAGE_MARGIN, 69)
+	pdf.SetXY(PAGE_MARGIN, 55)
 	pdf.SetTextColor(0, 0, 0)
-	err = pdf.SetFont("Rubik-Regular", "", 12)
+	err = pdf.SetFont("Rubik-Regular", "", 10)
 	if err != nil {
 		return nil, err
 	}
