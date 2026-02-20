@@ -52,6 +52,8 @@ func runMainLoop(pollInterval time.Duration) {
 			log.Print("shutdown signal received")
 			return
 		case <-ticker.C:
+			// TODO(USE-54): Replace this placeholder poll tick with a real queue consumer loop.
+			// https://linear.app/useful-code/issue/USE-54/inf-05-replace-remaining-service-stubs-and-placeholder-runtime-loops
 			log.Print("poll tick: awaiting queue consumer implementation")
 		}
 	}
