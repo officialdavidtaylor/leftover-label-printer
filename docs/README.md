@@ -11,6 +11,7 @@ Read these files before starting any implementation task:
 5. `contracts/asyncapi.yaml`
 6. `docs/security.md`
 7. `docs/definition-of-done.md`
+8. `docs/environment-and-secrets.md`
 
 Use this template when creating or refining Linear work items:
 
