@@ -5,6 +5,7 @@
 1. Identity provider: self-hosted authentik with OIDC.
 2. Frontend auth flow: Authorization Code + PKCE.
 3. Backend token validation: issuer, audience, signature, expiry, and required claims.
+   - Discovery/JWKS details: `docs/jwt-verification.md`.
 4. Canonical role claim: `roles` (array of strings) in JWT access tokens.
 5. Role model: minimum `user` and `sysadmin`.
 6. Authorization enforcement: route-level RBAC in backend with ownership checks:
