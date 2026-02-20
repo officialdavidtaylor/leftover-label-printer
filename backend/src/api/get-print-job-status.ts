@@ -65,6 +65,7 @@ export async function handleGetPrintJobStatus(
 ): Promise<GetPrintJobStatusHttpResponse> {
   const traceId = request.traceId ?? deps.createTraceId?.() ?? randomUUID();
   const token = extractBearerToken(request.authorizationHeader);
+  // Missing or malformed bearer auth is always a 401 before any data lookup.
   if (!token) {
     deps.onLog?.({
       event: 'print_job_status_read',
@@ -130,6 +131,7 @@ export async function handleGetPrintJobStatus(
   }
 
   const events = await deps.store.listEventsForJob(job.jobId);
+  // Timeline ordering is stable for clients: occurredAt ASC, then eventId ASC.
   const orderedEvents = orderEvents(events);
 
   deps.onLog?.({
