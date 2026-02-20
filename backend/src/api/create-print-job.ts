@@ -85,6 +85,7 @@ export async function handleCreatePrintJob(
 ): Promise<CreatePrintJobHttpResponse> {
   const traceId = request.traceId ?? deps.createTraceId?.() ?? randomUUID();
   const token = extractBearerToken(request.authorizationHeader);
+  // Missing or malformed bearer auth is handled uniformly as 401.
   if (!token) {
     deps.onLog?.({ event: 'print_job_submission', result: 'unauthorized', traceId });
     return {
@@ -127,6 +128,7 @@ export async function handleCreatePrintJob(
   }
 
   const payload = bodyResult.data;
+  // Validate referenced resources before accepting the submission into job history.
   const [printerFound, templateFound] = await Promise.all([
     deps.store.printerExists(payload.printerId),
     deps.store.templateExists(payload.templateId, payload.templateVersion),
@@ -146,6 +148,7 @@ export async function handleCreatePrintJob(
   }
 
   const existing = await deps.store.findByIdempotencyKey(payload.idempotencyKey);
+  // Replay the original accepted job for idempotent retries.
   if (existing) {
     deps.onLog?.({
       event: 'print_job_submission',
@@ -178,6 +181,7 @@ export async function handleCreatePrintJob(
       event: initialEvent,
     });
   } catch (error) {
+    // Unique-index races should still replay the persisted accepted job, not fail the caller.
     if (error instanceof DuplicateIdempotencyKeyError) {
       const duplicated = await deps.store.findByIdempotencyKey(payload.idempotencyKey);
       if (duplicated) {
