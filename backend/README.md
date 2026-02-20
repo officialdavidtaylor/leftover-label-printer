@@ -15,3 +15,8 @@ Environment setup:
 2. Fill in required values listed in `config/required-env.txt`.
 3. Keep `OIDC_ROLES_CLAIM=roles` unless a contract-breaking migration is planned across backend and clients.
 4. Validate runtime readiness with `node --experimental-strip-types ../scripts/env/validate-env.ts config/required-env.txt .env`.
+
+Data contracts:
+
+1. Backend data validation uses `zod` schemas in `src/data/schema-contracts.ts`.
+2. Canonical sample schema documents are documented in `../docs/data-schemas.md`.

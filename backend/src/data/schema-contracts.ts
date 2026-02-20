@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export const PRINT_JOB_STATES = [
   'pending',
   'processing',
@@ -17,55 +19,137 @@ export type PrinterStatus = (typeof PRINTER_STATUSES)[number];
 export const TEMPLATE_STATUSES = ['active', 'inactive', 'deprecated'] as const;
 export type TemplateStatus = (typeof TEMPLATE_STATUSES)[number];
 
-export type PrintJobDocument = {
-  jobId: string;
-  idempotencyKey: string;
-  state: PrintJobState;
-  printerId: string;
-  templateId: string;
-  templateVersion?: string;
-  payload: Record<string, unknown>;
-  traceId: string;
-  acceptedAt: string;
-  createdAt: string;
-  updatedAt: string;
-};
+const nonEmptyStringSchema = z.string().trim().min(1);
+const isoTimestampSchema = nonEmptyStringSchema.refine((value) => !Number.isNaN(Date.parse(value)), {
+  message: 'expected ISO-8601 timestamp',
+});
+const jsonObjectSchema = z.record(z.string(), z.unknown());
 
-export type JobEventDocument = {
-  eventId: string;
-  jobId: string;
-  type: PrintJobState;
-  source: JobEventSource;
-  occurredAt: string;
-  traceId: string;
-  printerId?: string;
-  outcome?: 'printed' | 'failed';
-  errorCode?: string;
-  errorMessage?: string;
-};
+const printJobStateSchema = z.enum(PRINT_JOB_STATES);
+const jobEventSourceSchema = z.enum(JOB_EVENT_SOURCES);
+const printerStatusSchema = z.enum(PRINTER_STATUSES);
+const templateStatusSchema = z.enum(TEMPLATE_STATUSES);
+const jobEventOutcomeSchema = z.enum(['printed', 'failed']);
 
-export type PrinterDocument = {
-  printerId: string;
-  nodeId: string;
-  status: PrinterStatus;
-  capabilities: Record<string, unknown>;
-  metadata?: Record<string, unknown>;
-  lastSeenAt: string;
-  createdAt: string;
-  updatedAt: string;
-};
+export const printJobDocumentSchema = z.object({
+  jobId: nonEmptyStringSchema,
+  idempotencyKey: nonEmptyStringSchema,
+  state: printJobStateSchema,
+  printerId: nonEmptyStringSchema,
+  templateId: nonEmptyStringSchema,
+  templateVersion: nonEmptyStringSchema.optional(),
+  payload: jsonObjectSchema,
+  traceId: nonEmptyStringSchema,
+  acceptedAt: isoTimestampSchema,
+  createdAt: isoTimestampSchema,
+  updatedAt: isoTimestampSchema,
+});
 
-export type TemplateDocument = {
-  templateId: string;
-  version: string;
-  name: string;
-  schemaVersion: string;
-  renderEngine: string;
-  status: TemplateStatus;
-  config: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-};
+export const jobEventDocumentSchema = z
+  .object({
+    eventId: nonEmptyStringSchema,
+    jobId: nonEmptyStringSchema,
+    type: printJobStateSchema,
+    source: jobEventSourceSchema,
+    occurredAt: isoTimestampSchema,
+    traceId: nonEmptyStringSchema,
+    printerId: nonEmptyStringSchema.optional(),
+    outcome: jobEventOutcomeSchema.optional(),
+    errorCode: nonEmptyStringSchema.optional(),
+    errorMessage: nonEmptyStringSchema.optional(),
+  })
+  .superRefine((document, ctx) => {
+    const backendAllowedEvents = new Set<PrintJobState>(['pending', 'processing', 'dispatched']);
+    const agentAllowedEvents = new Set<PrintJobState>(['printed', 'failed']);
+
+    if (document.source === 'backend' && !backendAllowedEvents.has(document.type)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['type'],
+        message: 'backend source can only emit pending, processing, or dispatched events',
+      });
+    }
+
+    if (document.source === 'agent') {
+      if (!agentAllowedEvents.has(document.type)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['type'],
+          message: 'agent source can only emit printed or failed events',
+        });
+      }
+
+      if (!document.printerId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['printerId'],
+          message: 'printerId is required for agent events',
+        });
+      }
+
+      if (!document.outcome) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['outcome'],
+          message: 'outcome is required for agent events',
+        });
+      }
+
+      if (document.outcome && document.outcome !== document.type) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['outcome'],
+          message: 'outcome must match event type for agent terminal events',
+        });
+      }
+    }
+
+    if (document.type === 'failed') {
+      if (!document.errorCode) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['errorCode'],
+          message: 'errorCode is required for failed events',
+        });
+      }
+
+      if (!document.errorMessage) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['errorMessage'],
+          message: 'errorMessage is required for failed events',
+        });
+      }
+    }
+  });
+
+export const printerDocumentSchema = z.object({
+  printerId: nonEmptyStringSchema,
+  nodeId: nonEmptyStringSchema,
+  status: printerStatusSchema,
+  capabilities: jsonObjectSchema,
+  metadata: jsonObjectSchema.optional(),
+  lastSeenAt: isoTimestampSchema,
+  createdAt: isoTimestampSchema,
+  updatedAt: isoTimestampSchema,
+});
+
+export const templateDocumentSchema = z.object({
+  templateId: nonEmptyStringSchema,
+  version: nonEmptyStringSchema,
+  name: nonEmptyStringSchema,
+  schemaVersion: nonEmptyStringSchema,
+  renderEngine: nonEmptyStringSchema,
+  status: templateStatusSchema,
+  config: jsonObjectSchema,
+  createdAt: isoTimestampSchema,
+  updatedAt: isoTimestampSchema,
+});
+
+export type PrintJobDocument = z.infer<typeof printJobDocumentSchema>;
+export type JobEventDocument = z.infer<typeof jobEventDocumentSchema>;
+export type PrinterDocument = z.infer<typeof printerDocumentSchema>;
+export type TemplateDocument = z.infer<typeof templateDocumentSchema>;
 
 export type CollectionContract = {
   name: 'print_jobs' | 'job_events' | 'printers' | 'templates';
@@ -158,274 +242,21 @@ export type PrintJobStatusResponse = {
   events: JobEventDocument[];
 };
 
-export const EXAMPLE_PRINT_JOB_DOCUMENT: PrintJobDocument = {
-  jobId: 'job-7f669920',
-  idempotencyKey: 'idem-7f669920',
-  state: 'pending',
-  printerId: 'printer-east-1',
-  templateId: 'label-default',
-  templateVersion: 'v1',
-  payload: {
-    itemName: 'Lemon Bars',
-    prepDate: '2026-02-20',
-    expirationDate: '2026-02-24',
-  },
-  traceId: 'trace-a9e6141a',
-  acceptedAt: '2026-02-20T15:00:00.000Z',
-  createdAt: '2026-02-20T15:00:00.000Z',
-  updatedAt: '2026-02-20T15:00:00.000Z',
-};
-
-export const EXAMPLE_JOB_EVENT_DOCUMENT: JobEventDocument = {
-  eventId: 'event-b6db3543',
-  jobId: 'job-7f669920',
-  type: 'pending',
-  source: 'backend',
-  occurredAt: '2026-02-20T15:00:00.000Z',
-  traceId: 'trace-a9e6141a',
-};
-
-export const EXAMPLE_PRINTER_DOCUMENT: PrinterDocument = {
-  printerId: 'printer-east-1',
-  nodeId: 'node-east-1',
-  status: 'online',
-  capabilities: {
-    model: 'Brother QL-820NWB',
-    media: ['62mm'],
-  },
-  metadata: {
-    location: 'Prep Kitchen',
-  },
-  lastSeenAt: '2026-02-20T14:59:10.000Z',
-  createdAt: '2026-02-01T00:00:00.000Z',
-  updatedAt: '2026-02-20T14:59:10.000Z',
-};
-
-export const EXAMPLE_TEMPLATE_DOCUMENT: TemplateDocument = {
-  templateId: 'label-default',
-  version: 'v1',
-  name: 'Default Leftover Label',
-  schemaVersion: '1.0.0',
-  renderEngine: 'pdfkit',
-  status: 'active',
-  config: {
-    pageSize: '62mmx100mm',
-    locale: 'en-US',
-  },
-  createdAt: '2026-02-01T00:00:00.000Z',
-  updatedAt: '2026-02-20T12:30:00.000Z',
-};
-
+// Canonical sample documents are intentionally centralized in docs/data-schemas.md.
 export function validatePrintJobDocument(value: unknown): ValidationResult<PrintJobDocument> {
-  const failures: ValidationFailure[] = [];
-
-  const document = asRecord(value, failures, '$');
-  if (!document) {
-    return invalid(failures);
-  }
-
-  const jobId = getRequiredString(document, 'jobId', failures);
-  const idempotencyKey = getRequiredString(document, 'idempotencyKey', failures);
-  const state = getRequiredEnum(document, 'state', PRINT_JOB_STATES, failures);
-  const printerId = getRequiredString(document, 'printerId', failures);
-  const templateId = getRequiredString(document, 'templateId', failures);
-  const templateVersion = getOptionalString(document, 'templateVersion', failures);
-  const payload = getRequiredRecord(document, 'payload', failures);
-  const traceId = getRequiredString(document, 'traceId', failures);
-  const acceptedAt = getRequiredIsoTimestamp(document, 'acceptedAt', failures);
-  const createdAt = getRequiredIsoTimestamp(document, 'createdAt', failures);
-  const updatedAt = getRequiredIsoTimestamp(document, 'updatedAt', failures);
-
-  if (failures.length > 0) {
-    return invalid(failures);
-  }
-
-  return {
-    valid: true,
-    document: {
-      jobId,
-      idempotencyKey,
-      state,
-      printerId,
-      templateId,
-      ...(templateVersion ? { templateVersion } : {}),
-      payload,
-      traceId,
-      acceptedAt,
-      createdAt,
-      updatedAt,
-    },
-  };
+  return toValidationResult(printJobDocumentSchema.safeParse(value));
 }
 
 export function validateJobEventDocument(value: unknown): ValidationResult<JobEventDocument> {
-  const failures: ValidationFailure[] = [];
-
-  const document = asRecord(value, failures, '$');
-  if (!document) {
-    return invalid(failures);
-  }
-
-  const eventId = getRequiredString(document, 'eventId', failures);
-  const jobId = getRequiredString(document, 'jobId', failures);
-  const type = getRequiredEnum(document, 'type', PRINT_JOB_STATES, failures);
-  const source = getRequiredEnum(document, 'source', JOB_EVENT_SOURCES, failures);
-  const occurredAt = getRequiredIsoTimestamp(document, 'occurredAt', failures);
-  const traceId = getRequiredString(document, 'traceId', failures);
-  const printerId = getOptionalString(document, 'printerId', failures);
-  const outcome = getOptionalEnum(document, 'outcome', ['printed', 'failed'] as const, failures);
-  const errorCode = getOptionalString(document, 'errorCode', failures);
-  const errorMessage = getOptionalString(document, 'errorMessage', failures);
-
-  const backendAllowedEvents = new Set<PrintJobState>(['pending', 'processing', 'dispatched']);
-  const agentAllowedEvents = new Set<PrintJobState>(['printed', 'failed']);
-
-  if (source === 'backend' && !backendAllowedEvents.has(type)) {
-    failures.push({
-      field: 'type',
-      message: 'backend source can only emit pending, processing, or dispatched events',
-    });
-  }
-
-  if (source === 'agent') {
-    if (!agentAllowedEvents.has(type)) {
-      failures.push({
-        field: 'type',
-        message: 'agent source can only emit printed or failed events',
-      });
-    }
-
-    if (!printerId) {
-      failures.push({
-        field: 'printerId',
-        message: 'printerId is required for agent events',
-      });
-    }
-
-    if (!outcome) {
-      failures.push({
-        field: 'outcome',
-        message: 'outcome is required for agent events',
-      });
-    }
-
-    if (outcome && outcome !== type) {
-      failures.push({
-        field: 'outcome',
-        message: 'outcome must match event type for agent terminal events',
-      });
-    }
-  }
-
-  if (type === 'failed') {
-    if (!errorCode) {
-      failures.push({
-        field: 'errorCode',
-        message: 'errorCode is required for failed events',
-      });
-    }
-
-    if (!errorMessage) {
-      failures.push({
-        field: 'errorMessage',
-        message: 'errorMessage is required for failed events',
-      });
-    }
-  }
-
-  if (failures.length > 0) {
-    return invalid(failures);
-  }
-
-  return {
-    valid: true,
-    document: {
-      eventId,
-      jobId,
-      type,
-      source,
-      occurredAt,
-      traceId,
-      ...(printerId ? { printerId } : {}),
-      ...(outcome ? { outcome } : {}),
-      ...(errorCode ? { errorCode } : {}),
-      ...(errorMessage ? { errorMessage } : {}),
-    },
-  };
+  return toValidationResult(jobEventDocumentSchema.safeParse(value));
 }
 
 export function validatePrinterDocument(value: unknown): ValidationResult<PrinterDocument> {
-  const failures: ValidationFailure[] = [];
-
-  const document = asRecord(value, failures, '$');
-  if (!document) {
-    return invalid(failures);
-  }
-
-  const printerId = getRequiredString(document, 'printerId', failures);
-  const nodeId = getRequiredString(document, 'nodeId', failures);
-  const status = getRequiredEnum(document, 'status', PRINTER_STATUSES, failures);
-  const capabilities = getRequiredRecord(document, 'capabilities', failures);
-  const metadata = getOptionalRecord(document, 'metadata', failures);
-  const lastSeenAt = getRequiredIsoTimestamp(document, 'lastSeenAt', failures);
-  const createdAt = getRequiredIsoTimestamp(document, 'createdAt', failures);
-  const updatedAt = getRequiredIsoTimestamp(document, 'updatedAt', failures);
-
-  if (failures.length > 0) {
-    return invalid(failures);
-  }
-
-  return {
-    valid: true,
-    document: {
-      printerId,
-      nodeId,
-      status,
-      capabilities,
-      ...(metadata ? { metadata } : {}),
-      lastSeenAt,
-      createdAt,
-      updatedAt,
-    },
-  };
+  return toValidationResult(printerDocumentSchema.safeParse(value));
 }
 
 export function validateTemplateDocument(value: unknown): ValidationResult<TemplateDocument> {
-  const failures: ValidationFailure[] = [];
-
-  const document = asRecord(value, failures, '$');
-  if (!document) {
-    return invalid(failures);
-  }
-
-  const templateId = getRequiredString(document, 'templateId', failures);
-  const version = getRequiredString(document, 'version', failures);
-  const name = getRequiredString(document, 'name', failures);
-  const schemaVersion = getRequiredString(document, 'schemaVersion', failures);
-  const renderEngine = getRequiredString(document, 'renderEngine', failures);
-  const status = getRequiredEnum(document, 'status', TEMPLATE_STATUSES, failures);
-  const config = getRequiredRecord(document, 'config', failures);
-  const createdAt = getRequiredIsoTimestamp(document, 'createdAt', failures);
-  const updatedAt = getRequiredIsoTimestamp(document, 'updatedAt', failures);
-
-  if (failures.length > 0) {
-    return invalid(failures);
-  }
-
-  return {
-    valid: true,
-    document: {
-      templateId,
-      version,
-      name,
-      schemaVersion,
-      renderEngine,
-      status,
-      config,
-      createdAt,
-      updatedAt,
-    },
-  };
+  return toValidationResult(templateDocumentSchema.safeParse(value));
 }
 
 export function toPrintJobAcceptedResponse(job: PrintJobDocument): PrintJobAcceptedResponse {
@@ -469,138 +300,23 @@ export function buildSchemaValidationFailureLog(
   };
 }
 
-function invalid<T>(failures: ValidationFailure[]): ValidationResult<T> {
+function toValidationResult<T>(
+  result:
+    | { success: true; data: T }
+    | {
+        success: false;
+        error: z.ZodError<T>;
+      }
+): ValidationResult<T> {
+  if (result.success) {
+    return { valid: true, document: result.data };
+  }
+
   return {
     valid: false,
-    failures,
+    failures: result.error.issues.map((issue) => ({
+      field: issue.path.length > 0 ? String(issue.path[0]) : '$',
+      message: issue.message,
+    })),
   };
-}
-
-function asRecord(
-  value: unknown,
-  failures: ValidationFailure[],
-  field: string
-): Record<string, unknown> | undefined {
-  if (!isRecord(value)) {
-    failures.push({ field, message: 'expected object' });
-    return undefined;
-  }
-
-  return value;
-}
-
-function getRequiredString(
-  document: Record<string, unknown>,
-  field: string,
-  failures: ValidationFailure[]
-): string {
-  const value = document[field];
-  if (typeof value !== 'string' || value.trim() === '') {
-    failures.push({ field, message: 'expected non-empty string' });
-    return '';
-  }
-
-  return value;
-}
-
-function getOptionalString(
-  document: Record<string, unknown>,
-  field: string,
-  failures: ValidationFailure[]
-): string | undefined {
-  const value = document[field];
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (typeof value !== 'string' || value.trim() === '') {
-    failures.push({ field, message: 'expected non-empty string when present' });
-    return undefined;
-  }
-
-  return value;
-}
-
-function getRequiredEnum<const T extends readonly string[]>(
-  document: Record<string, unknown>,
-  field: string,
-  allowed: T,
-  failures: ValidationFailure[]
-): T[number] {
-  const value = document[field];
-  if (typeof value !== 'string' || !allowed.includes(value)) {
-    failures.push({ field, message: `expected one of: ${allowed.join(', ')}` });
-    return allowed[0];
-  }
-
-  return value;
-}
-
-function getOptionalEnum<const T extends readonly string[]>(
-  document: Record<string, unknown>,
-  field: string,
-  allowed: T,
-  failures: ValidationFailure[]
-): T[number] | undefined {
-  const value = document[field];
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (typeof value !== 'string' || !allowed.includes(value)) {
-    failures.push({ field, message: `expected one of: ${allowed.join(', ')}` });
-    return undefined;
-  }
-
-  return value;
-}
-
-function getRequiredRecord(
-  document: Record<string, unknown>,
-  field: string,
-  failures: ValidationFailure[]
-): Record<string, unknown> {
-  const value = document[field];
-  if (!isRecord(value)) {
-    failures.push({ field, message: 'expected object' });
-    return {};
-  }
-
-  return value;
-}
-
-function getOptionalRecord(
-  document: Record<string, unknown>,
-  field: string,
-  failures: ValidationFailure[]
-): Record<string, unknown> | undefined {
-  const value = document[field];
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (!isRecord(value)) {
-    failures.push({ field, message: 'expected object when present' });
-    return undefined;
-  }
-
-  return value;
-}
-
-function getRequiredIsoTimestamp(
-  document: Record<string, unknown>,
-  field: string,
-  failures: ValidationFailure[]
-): string {
-  const value = getRequiredString(document, field, failures);
-  if (value !== '' && Number.isNaN(Date.parse(value))) {
-    failures.push({ field, message: 'expected ISO-8601 timestamp' });
-    return '';
-  }
-
-  return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

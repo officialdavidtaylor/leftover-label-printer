@@ -6,10 +6,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   COLLECTION_CONTRACTS,
-  EXAMPLE_JOB_EVENT_DOCUMENT,
-  EXAMPLE_PRINTER_DOCUMENT,
-  EXAMPLE_PRINT_JOB_DOCUMENT,
-  EXAMPLE_TEMPLATE_DOCUMENT,
   buildSchemaValidationFailureLog,
   toPrintJobAcceptedResponse,
   toPrintJobStatusResponse,
@@ -18,6 +14,12 @@ import {
   validatePrintJobDocument,
   validateTemplateDocument,
 } from '../../backend/src/data/schema-contracts.ts';
+import {
+  createJobEventDocument,
+  createPrinterDocument,
+  createPrintJobDocument,
+  createTemplateDocument,
+} from './fixtures/schema-fixtures.ts';
 
 const fileDir = path.dirname(fileURLToPath(import.meta.url));
 const openApiPath = path.resolve(fileDir, '../../contracts/openapi.yaml');
@@ -39,27 +41,24 @@ describe('schema-contracts', () => {
   });
 
   it('accepts representative documents for all collections', () => {
-    expect(validatePrintJobDocument(EXAMPLE_PRINT_JOB_DOCUMENT)).toMatchObject({ valid: true });
-    expect(validateJobEventDocument(EXAMPLE_JOB_EVENT_DOCUMENT)).toMatchObject({ valid: true });
-    expect(validatePrinterDocument(EXAMPLE_PRINTER_DOCUMENT)).toMatchObject({ valid: true });
-    expect(validateTemplateDocument(EXAMPLE_TEMPLATE_DOCUMENT)).toMatchObject({ valid: true });
+    expect(validatePrintJobDocument(createPrintJobDocument())).toMatchObject({ valid: true });
+    expect(validateJobEventDocument(createJobEventDocument())).toMatchObject({ valid: true });
+    expect(validatePrinterDocument(createPrinterDocument())).toMatchObject({ valid: true });
+    expect(validateTemplateDocument(createTemplateDocument())).toMatchObject({ valid: true });
   });
 
   it('rejects missing required fields on print_jobs', () => {
-    const result = validatePrintJobDocument(stripField(EXAMPLE_PRINT_JOB_DOCUMENT, 'printerId'));
+    const result = validatePrintJobDocument(stripField(createPrintJobDocument(), 'printerId'));
 
     expect(result.valid).toBe(false);
     if (!result.valid) {
-      expect(result.failures).toContainEqual({
-        field: 'printerId',
-        message: 'expected non-empty string',
-      });
+      expect(result.failures.some((failure) => failure.field === 'printerId')).toBe(true);
     }
   });
 
   it('rejects invalid enum values and non-object payloads', () => {
     const result = validatePrintJobDocument({
-      ...EXAMPLE_PRINT_JOB_DOCUMENT,
+      ...createPrintJobDocument(),
       state: 'queued',
       payload: 'not-an-object',
     });
@@ -73,9 +72,13 @@ describe('schema-contracts', () => {
 
   it('rejects invalid agent event shape and failed event without error details', () => {
     const result = validateJobEventDocument({
-      ...EXAMPLE_JOB_EVENT_DOCUMENT,
+      ...createJobEventDocument(),
       type: 'failed',
       source: 'agent',
+      printerId: undefined,
+      outcome: undefined,
+      errorCode: undefined,
+      errorMessage: undefined,
     });
 
     expect(result.valid).toBe(false);
@@ -88,7 +91,7 @@ describe('schema-contracts', () => {
   });
 
   it('builds validation failure logs with traceId', () => {
-    const result = validatePrintJobDocument({ ...EXAMPLE_PRINT_JOB_DOCUMENT, acceptedAt: 'not-a-date' });
+    const result = validatePrintJobDocument({ ...createPrintJobDocument(), acceptedAt: 'not-a-date' });
     const log = buildSchemaValidationFailureLog('print_jobs', result, 'trace-123');
 
     expect(log).toMatchObject({
@@ -103,20 +106,22 @@ describe('schema-contracts', () => {
 
 describe('schema-contracts-openapi-alignment', () => {
   it('maps print_jobs documents to accepted and status response shapes', () => {
-    const accepted = toPrintJobAcceptedResponse(EXAMPLE_PRINT_JOB_DOCUMENT);
-    const status = toPrintJobStatusResponse(EXAMPLE_PRINT_JOB_DOCUMENT, [EXAMPLE_JOB_EVENT_DOCUMENT]);
+    const job = createPrintJobDocument();
+    const event = createJobEventDocument({ jobId: job.jobId, traceId: job.traceId });
+    const accepted = toPrintJobAcceptedResponse(job);
+    const status = toPrintJobStatusResponse(job, [event]);
 
     expect(accepted).toEqual({
-      jobId: EXAMPLE_PRINT_JOB_DOCUMENT.jobId,
-      state: EXAMPLE_PRINT_JOB_DOCUMENT.state,
-      acceptedAt: EXAMPLE_PRINT_JOB_DOCUMENT.acceptedAt,
-      traceId: EXAMPLE_PRINT_JOB_DOCUMENT.traceId,
+      jobId: job.jobId,
+      state: job.state,
+      acceptedAt: job.acceptedAt,
+      traceId: job.traceId,
     });
     expect(status).toMatchObject({
-      jobId: EXAMPLE_PRINT_JOB_DOCUMENT.jobId,
-      state: EXAMPLE_PRINT_JOB_DOCUMENT.state,
-      printerId: EXAMPLE_PRINT_JOB_DOCUMENT.printerId,
-      templateId: EXAMPLE_PRINT_JOB_DOCUMENT.templateId,
+      jobId: job.jobId,
+      state: job.state,
+      printerId: job.printerId,
+      templateId: job.templateId,
     });
     expect(status.events).toHaveLength(1);
   });

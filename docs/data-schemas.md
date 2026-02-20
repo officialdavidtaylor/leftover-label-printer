@@ -2,6 +2,12 @@
 
 This document defines canonical Mongo collection contracts for the print workflow.
 
+## Validation And Fixtures
+
+1. Runtime schema validation in TypeScript is implemented with `zod` (`backend/src/data/schema-contracts.ts`).
+2. Tests use faker-driven fixtures (`tests/backend/fixtures/schema-fixtures.ts`) instead of hardcoded sample objects.
+3. Canonical literal document examples remain in this document and are treated as the source of truth for sample payloads.
+
 ## Collections
 
 1. `print_jobs`
