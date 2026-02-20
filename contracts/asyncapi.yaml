@@ -1,0 +1,140 @@
+asyncapi: 2.6.0
+info:
+  title: Leftover Label Printer MQTT Contract
+  version: 0.1.0
+  description: |
+    Initial MQTT contract for backend command dispatch and edge status events.
+defaultContentType: application/json
+servers:
+  production:
+    url: mqtt.example.com:8883
+    protocol: mqtt
+    description: EMQX broker over TLS
+channels:
+  printers/{printerId}/jobs:
+    parameters:
+      printerId:
+        description: Target printer identifier
+        schema:
+          type: string
+    publish:
+      operationId: publishPrintJobCommand
+      summary: Backend publishes print command to target printer topic
+      message:
+        $ref: '#/components/messages/PrintJobCommand'
+  printers/{printerId}/status:
+    parameters:
+      printerId:
+        description: Source printer identifier
+        schema:
+          type: string
+    publish:
+      operationId: publishPrinterStatus
+      summary: Edge agent publishes job outcomes and health
+      message:
+        oneOf:
+          - $ref: '#/components/messages/PrintJobOutcome'
+          - $ref: '#/components/messages/PrinterHeartbeat'
+components:
+  messages:
+    PrintJobCommand:
+      name: PrintJobCommand
+      payload:
+        $ref: '#/components/schemas/PrintJobCommandPayload'
+    PrintJobOutcome:
+      name: PrintJobOutcome
+      payload:
+        $ref: '#/components/schemas/PrintJobOutcomePayload'
+    PrinterHeartbeat:
+      name: PrinterHeartbeat
+      payload:
+        $ref: '#/components/schemas/PrinterHeartbeatPayload'
+  schemas:
+    PrintJobCommandPayload:
+      type: object
+      required:
+        - schemaVersion
+        - eventId
+        - traceId
+        - jobId
+        - printerId
+        - objectUrl
+        - issuedAt
+      properties:
+        schemaVersion:
+          type: string
+        eventId:
+          type: string
+        traceId:
+          type: string
+        jobId:
+          type: string
+        printerId:
+          type: string
+        objectUrl:
+          type: string
+          format: uri
+        issuedAt:
+          type: string
+          format: date-time
+    PrintJobOutcomePayload:
+      type: object
+      required:
+        - schemaVersion
+        - eventId
+        - traceId
+        - jobId
+        - printerId
+        - outcome
+        - occurredAt
+      properties:
+        schemaVersion:
+          type: string
+        eventId:
+          type: string
+        traceId:
+          type: string
+        jobId:
+          type: string
+        printerId:
+          type: string
+        outcome:
+          type: string
+          enum:
+            - printed
+            - failed
+        occurredAt:
+          type: string
+          format: date-time
+        errorCode:
+          type: string
+        errorMessage:
+          type: string
+    PrinterHeartbeatPayload:
+      type: object
+      required:
+        - schemaVersion
+        - eventId
+        - traceId
+        - printerId
+        - type
+        - occurredAt
+      properties:
+        schemaVersion:
+          type: string
+        eventId:
+          type: string
+        traceId:
+          type: string
+        printerId:
+          type: string
+        type:
+          type: string
+          enum:
+            - heartbeat
+        occurredAt:
+          type: string
+          format: date-time
+        uptimeSeconds:
+          type: integer
+          minimum: 0

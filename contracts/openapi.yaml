@@ -1,0 +1,212 @@
+openapi: 3.0.3
+info:
+  title: Leftover Label Printer API
+  version: 0.1.0
+  description: |
+    Initial contract for print job submission and job status retrieval.
+    Versioning policy uses semantic versioning (semver).
+    Breaking changes require a major version bump and a documented deprecation window with migration guidance.
+    Authorization decisions are derived from JWT `roles` claim values.
+servers:
+  - url: https://api.example.com
+security:
+  - bearerAuth: []
+paths:
+  /v1/print-jobs:
+    post:
+      operationId: createPrintJob
+      summary: Submit a print job
+      tags: [PrintJobs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrintJobCreateRequest'
+      responses:
+        '202':
+          description: Job accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrintJobAcceptedResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/print-jobs/{jobId}:
+    get:
+      operationId: getPrintJob
+      summary: Get print job state and timeline
+      tags: [PrintJobs]
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrintJobStatusResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        OIDC access token signed by configured issuer.
+        Tokens must include a `roles` claim (array of strings).
+        MVP roles: `user` and `sysadmin`.
+  schemas:
+    PrintJobCreateRequest:
+      type: object
+      required:
+        - idempotencyKey
+        - printerId
+        - templateId
+        - payload
+      properties:
+        idempotencyKey:
+          type: string
+        printerId:
+          type: string
+        templateId:
+          type: string
+        templateVersion:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+    PrintJobAcceptedResponse:
+      type: object
+      required:
+        - jobId
+        - state
+        - acceptedAt
+      properties:
+        jobId:
+          type: string
+        state:
+          $ref: '#/components/schemas/PrintJobState'
+        acceptedAt:
+          type: string
+          format: date-time
+        traceId:
+          type: string
+    PrintJobStatusResponse:
+      type: object
+      required:
+        - jobId
+        - state
+        - printerId
+        - templateId
+        - events
+      properties:
+        jobId:
+          type: string
+        state:
+          $ref: '#/components/schemas/PrintJobState'
+        printerId:
+          type: string
+        templateId:
+          type: string
+        templateVersion:
+          type: string
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/PrintJobEvent'
+    PrintJobEvent:
+      type: object
+      required:
+        - eventId
+        - jobId
+        - type
+        - source
+        - occurredAt
+      properties:
+        eventId:
+          type: string
+        jobId:
+          type: string
+        type:
+          type: string
+          enum:
+            - pending
+            - processing
+            - dispatched
+            - printed
+            - failed
+        source:
+          type: string
+          enum:
+            - backend
+            - agent
+        printerId:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        traceId:
+          type: string
+        errorCode:
+          type: string
+        errorMessage:
+          type: string
+    PrintJobState:
+      type: string
+      enum:
+        - pending
+        - processing
+        - dispatched
+        - printed
+        - failed
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        traceId:
+          type: string
