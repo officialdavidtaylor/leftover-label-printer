@@ -1,6 +1,6 @@
 import { createPublicKey, verify } from 'node:crypto';
 
-export const CANONICAL_ROLES_CLAIM = 'roles';
+import { CANONICAL_ROLES_CLAIM } from './roles.ts';
 
 export type AuthFailureReason =
   | 'malformed_token'

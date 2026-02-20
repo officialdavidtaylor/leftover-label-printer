@@ -11,6 +11,7 @@
 6. Authorization enforcement: route-level RBAC in backend with ownership checks:
    - `user`: limited to own jobs/resources.
    - `sysadmin`: cross-user visibility for platform management operations.
+   - Detailed matrix: `docs/rbac-authorization-matrix.md`.
 
 ## MQTT and Device Security
 
