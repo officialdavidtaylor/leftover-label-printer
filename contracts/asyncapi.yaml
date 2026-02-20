@@ -1,33 +1,48 @@
 asyncapi: 2.6.0
 info:
   title: Leftover Label Printer MQTT Contract
-  version: 0.1.0
+  version: 0.2.0
   description: |
-    Initial MQTT contract for backend command dispatch and edge status events.
+    Contract for backend command dispatch and edge status events.
 defaultContentType: application/json
+x-versioning-policy:
+  scheme: semver
+  messageSchemaVersionField: schemaVersion
+  compatibility:
+    currentMajor: 1
+    additiveChanges:
+      - optional_fields
+      - additive_enum_values
+    breakingChangesRequire:
+      - major_version_bump
+      - migration_guide
+      - minimum_deprecation_window_days: 90
+  owner: api-team
 servers:
   production:
     url: mqtt.example.com:8883
     protocol: mqtt
     description: EMQX broker over TLS
 channels:
-  printers/{printerId}/jobs:
+  printers/{id}/jobs:
+    description: Backend command topic for dispatching print jobs to one printer.
     parameters:
-      printerId:
-        description: Target printer identifier
+      id:
+        description: Target printer identifier.
         schema:
-          type: string
+          $ref: '#/components/schemas/PrinterId'
     publish:
       operationId: publishPrintJobCommand
       summary: Backend publishes print command to target printer topic
       message:
         $ref: '#/components/messages/PrintJobCommand'
-  printers/{printerId}/status:
+  printers/{id}/status:
+    description: Agent status topic for job outcomes and heartbeat messages.
     parameters:
-      printerId:
-        description: Source printer identifier
+      id:
+        description: Source printer identifier.
         schema:
-          type: string
+          $ref: '#/components/schemas/PrinterId'
     publish:
       operationId: publishPrinterStatus
       summary: Edge agent publishes job outcomes and health
@@ -39,21 +54,36 @@ components:
   messages:
     PrintJobCommand:
       name: PrintJobCommand
+      title: Print Job Command
       payload:
         $ref: '#/components/schemas/PrintJobCommandPayload'
     PrintJobOutcome:
       name: PrintJobOutcome
+      title: Print Job Outcome
       payload:
         $ref: '#/components/schemas/PrintJobOutcomePayload'
     PrinterHeartbeat:
       name: PrinterHeartbeat
+      title: Printer Heartbeat
       payload:
         $ref: '#/components/schemas/PrinterHeartbeatPayload'
   schemas:
+    SchemaVersion:
+      type: string
+      description: Message payload schema version; semantic versioning with major version 1.
+      pattern: '^1\.[0-9]+\.[0-9]+$'
+      example: 1.0.0
+    PrinterId:
+      type: string
+      minLength: 1
+      description: Stable printer identifier shared between API and MQTT contracts.
+      example: printer-1
     PrintJobCommandPayload:
       type: object
+      additionalProperties: false
       required:
         - schemaVersion
+        - type
         - eventId
         - traceId
         - jobId
@@ -62,7 +92,11 @@ components:
         - issuedAt
       properties:
         schemaVersion:
+          $ref: '#/components/schemas/SchemaVersion'
+        type:
           type: string
+          enum:
+            - print_job_dispatch
         eventId:
           type: string
         traceId:
@@ -70,7 +104,7 @@ components:
         jobId:
           type: string
         printerId:
-          type: string
+          $ref: '#/components/schemas/PrinterId'
         objectUrl:
           type: string
           format: uri
@@ -79,8 +113,10 @@ components:
           format: date-time
     PrintJobOutcomePayload:
       type: object
+      additionalProperties: false
       required:
         - schemaVersion
+        - type
         - eventId
         - traceId
         - jobId
@@ -89,7 +125,11 @@ components:
         - occurredAt
       properties:
         schemaVersion:
+          $ref: '#/components/schemas/SchemaVersion'
+        type:
           type: string
+          enum:
+            - job_outcome
         eventId:
           type: string
         traceId:
@@ -97,7 +137,7 @@ components:
         jobId:
           type: string
         printerId:
-          type: string
+          $ref: '#/components/schemas/PrinterId'
         outcome:
           type: string
           enum:
@@ -112,6 +152,7 @@ components:
           type: string
     PrinterHeartbeatPayload:
       type: object
+      additionalProperties: false
       required:
         - schemaVersion
         - eventId
@@ -121,13 +162,13 @@ components:
         - occurredAt
       properties:
         schemaVersion:
-          type: string
+          $ref: '#/components/schemas/SchemaVersion'
         eventId:
           type: string
         traceId:
           type: string
         printerId:
-          type: string
+          $ref: '#/components/schemas/PrinterId'
         type:
           type: string
           enum:

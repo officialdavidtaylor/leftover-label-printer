@@ -17,8 +17,8 @@
 
 1. Broker: self-hosted EMQX with TLS in non-local environments.
 2. Device identity: unique credentials per edge node.
-3. Topic ACL backend publish: `printers/{printerId}/jobs`.
-4. Topic ACL backend subscribe: `printers/{printerId}/status`.
+3. Topic ACL backend publish: `printers/{id}/jobs`.
+4. Topic ACL backend subscribe: `printers/{id}/status`.
 5. Topic ACL agent permissions are limited to its own `printerId`.
 6. No wildcard publish rights for edge nodes.
 

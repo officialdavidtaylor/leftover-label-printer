@@ -20,3 +20,9 @@ Data contracts:
 
 1. Backend data validation uses `zod` schemas in `src/data/schema-contracts.ts`.
 2. Canonical sample schema documents are documented in `../docs/data-schemas.md`.
+
+Interface contracts:
+
+1. HTTP API contract: `../contracts/openapi.yaml`.
+2. MQTT backend-agent contract: `../contracts/asyncapi.yaml`.
+3. MQTT versioning policy: `../docs/asyncapi-versioning-policy.md`.
