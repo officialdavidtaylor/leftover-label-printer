@@ -77,6 +77,11 @@ You can also run a target for a single service from root:
 - Bootstrap guide: `docs/local-dependency-stack.md`
 - One-command startup: `make -C infra up`
 
+## CI guardrails
+
+- Workflow: `.github/workflows/ci.yml`
+- CI baseline docs: `docs/ci.md`
+
 ## Agent notes
 
 ### Migration context pack

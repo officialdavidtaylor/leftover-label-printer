@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-test:
+    name: lint-test (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - frontend
+          - backend
+          - agent
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lint (${{ matrix.service }})
+        run: make lint-${{ matrix.service }}
+
+      - name: Test (${{ matrix.service }})
+        run: make test-${{ matrix.service }}
+
+  image-build:
+    name: image-build (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - backend
+          - agent
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.service }} image
+        run: |
+          docker build \
+            --file ${{ matrix.service }}/Dockerfile \
+            --tag leftover-label-printer/${{ matrix.service }}:ci-${{ github.sha }} \
+            ${{ matrix.service }}
