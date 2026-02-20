@@ -2,11 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import { authorizePrintJobOperation, buildForbiddenError } from '../auth/rbac-policy.ts';
 import { buildUnauthorizedError, type VerifiedJwtContext } from '../auth/jwt-verifier.ts';
-import type {
-  JobEventDocument,
-  PrintJobState,
-  PrintJobStatusResponse,
-} from '../data/schema-contracts.ts';
+import type { PrintJobState, PrintJobStatusResponse } from '../data/schema-contracts.ts';
+import { orderPrintJobEvents } from '../print-jobs/order-events.ts';
 
 type ErrorResponse = {
   code: string;
@@ -37,7 +34,7 @@ export type PersistedPrintJobForStatus = {
 
 export interface GetPrintJobStatusStore {
   findByJobId(jobId: string): Promise<PersistedPrintJobForStatus | null>;
-  listEventsForJob(jobId: string): Promise<JobEventDocument[]>;
+  listEventsForJob(jobId: string): Promise<PrintJobStatusResponse['events']>;
 }
 
 export type GetPrintJobStatusAuthVerifier = {
@@ -132,7 +129,7 @@ export async function handleGetPrintJobStatus(
 
   const events = await deps.store.listEventsForJob(job.jobId);
   // Timeline ordering is stable for clients: occurredAt ASC, then eventId ASC.
-  const orderedEvents = orderEvents(events);
+  const orderedEvents = orderPrintJobEvents(events);
 
   deps.onLog?.({
     event: 'print_job_status_read',
@@ -153,26 +150,6 @@ export async function handleGetPrintJobStatus(
       events: orderedEvents,
     },
   };
-}
-
-function orderEvents(events: readonly JobEventDocument[]): JobEventDocument[] {
-  const ordered = [...events];
-  ordered.sort((left, right) => {
-    const leftTime = Date.parse(left.occurredAt);
-    const rightTime = Date.parse(right.occurredAt);
-
-    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
-      return leftTime - rightTime;
-    }
-
-    if (left.occurredAt !== right.occurredAt) {
-      return left.occurredAt.localeCompare(right.occurredAt);
-    }
-
-    return left.eventId.localeCompare(right.eventId);
-  });
-
-  return ordered;
 }
 
 function extractBearerToken(authorizationHeader: string | undefined): string | null {
