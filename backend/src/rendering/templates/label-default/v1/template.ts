@@ -5,11 +5,8 @@ import { labelDefaultV1Assets } from './assets.ts';
 
 const labelDefaultV1PayloadSchema = z.object({
   itemName: z.string().trim().min(1).max(64),
-  quantity: z.number().int().positive().max(999).default(1),
-  unit: z.string().trim().min(1).max(16).optional(),
-  preparedBy: z.string().trim().min(1).max(64).optional(),
-  notes: z.string().trim().max(120).optional(),
-});
+  datePrepared: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD'),
+}).strict();
 
 type LabelDefaultV1Payload = z.infer<typeof labelDefaultV1PayloadSchema>;
 
@@ -22,18 +19,7 @@ export const labelDefaultV1Template: PdfTemplateDefinition<
   payloadSchema: labelDefaultV1PayloadSchema,
   assets: labelDefaultV1Assets,
   layout: labelDefaultV1Assets.layout,
-  buildLines(payload, assets) {
-    const quantityText = payload.unit
-      ? `${payload.quantity} ${payload.unit}`
-      : String(payload.quantity);
-
-    return [
-      assets.templateName,
-      `Item: ${payload.itemName}`,
-      `Qty: ${quantityText}`,
-      `Prepared by: ${payload.preparedBy ?? 'N/A'}`,
-      `Notes: ${payload.notes ?? 'N/A'}`,
-      assets.footerNote,
-    ];
+  buildLines(payload) {
+    return [payload.itemName, `prepared: ${payload.datePrepared}`];
   },
 };
