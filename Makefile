@@ -44,7 +44,7 @@ smoke:
 	@$(MAKE) build
 
 env-test:
-	@./tests/env/validate_env_test.sh
+	@node --test ./tests/env/validate-env.test.mjs
 
 install-frontend:
 	@$(MAKE) -C frontend install

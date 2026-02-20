@@ -21,8 +21,9 @@ Each service owns a required-key manifest used by runtime/startup validation:
 
 1. Every service should fail fast at startup when any required key is missing or blank.
 2. Validation errors must list missing key names only and never log secret values.
-3. `scripts/env/validate_env.sh` is the shared contract utility for validating required keys.
+3. `scripts/env/validate-env.mjs` is the shared repo-level contract utility for validating required keys.
 4. `--keys-only` mode is intended for `.env.example` contract checks where empty values are expected for secrets.
+5. Monorepo convention: repo-wide developer and CI utilities are implemented in Node/TypeScript; service-runtime validation is implemented in each service's native language.
 
 ## Secret sourcing by environment
 
@@ -37,5 +38,5 @@ Each service owns a required-key manifest used by runtime/startup validation:
 
 1. Copy each service `.env.example` to `.env` before first run.
 2. Populate required secret values from your approved secret source.
-3. Validate key contract presence with `scripts/env/validate_env.sh --keys-only <service>/config/required-env.txt <service>/.env.example`.
-4. Validate runtime-ready env files with `scripts/env/validate_env.sh <service>/config/required-env.txt <service>/.env`.
+3. Validate key contract presence with `node scripts/env/validate-env.mjs --keys-only <service>/config/required-env.txt <service>/.env.example`.
+4. Validate runtime-ready env files with `node scripts/env/validate-env.mjs <service>/config/required-env.txt <service>/.env`.

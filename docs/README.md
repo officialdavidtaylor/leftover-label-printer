@@ -13,6 +13,11 @@ Read these files before starting any implementation task:
 7. `docs/definition-of-done.md`
 8. `docs/environment-and-secrets.md`
 
+Repository implementation conventions:
+
+1. Use Node/TypeScript for repo-wide developer and CI scripts.
+2. Implement runtime config validation in each service's native language.
+
 Use this template when creating or refining Linear work items:
 
 - `docs/templates/linear-agent-issue-template.md`
