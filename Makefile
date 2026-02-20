@@ -2,7 +2,7 @@ SHELL := /bin/sh
 
 SERVICES := frontend backend agent infra
 
-.PHONY: help install lint test build smoke \
+.PHONY: help install lint test build smoke env-test \
 	install-frontend install-backend install-agent install-infra \
 	lint-frontend lint-backend lint-agent lint-infra \
 	test-frontend test-backend test-agent test-infra \
@@ -30,6 +30,7 @@ test:
 	@for service in $(SERVICES); do \
 		$(MAKE) -C $$service test || exit $$?; \
 	done
+	@$(MAKE) env-test
 
 build:
 	@for service in $(SERVICES); do \
@@ -41,6 +42,9 @@ smoke:
 	@$(MAKE) lint
 	@$(MAKE) test
 	@$(MAKE) build
+
+env-test:
+	@npm run --silent env:test
 
 install-frontend:
 	@$(MAKE) -C frontend install

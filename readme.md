@@ -48,8 +48,10 @@ You can also run a target for a single service from root:
 1. Clone the repository.
 2. Install required toolchains from `.tool-versions` (`nodejs` and `go`).
 3. Run `make install` from repository root.
-4. Run `make smoke` to verify command wiring.
-5. Move into a service directory and run `make <target>` while iterating.
+4. Copy each service `.env.example` file to `.env` and populate required secrets.
+5. Validate env contracts with `make env-test` and `node --experimental-strip-types scripts/env/validate-env.ts`.
+6. Run `make smoke` to verify command wiring.
+7. Move into a service directory and run `make <target>` while iterating.
 
 ## Coding conventions
 
@@ -57,6 +59,17 @@ You can also run a target for a single service from root:
 - Keep interface changes contract-first in `contracts/openapi.yaml` and `contracts/asyncapi.yaml`.
 - Keep secrets out of the repository. Use `.env.example` files for variable names only.
 - Prefer deterministic automation from repo root (`make ...`) and avoid hidden machine-local prerequisites.
+- Use Node/TypeScript for repo-wide developer and CI tooling; keep runtime validation in each service's native language.
+
+## Environment and secrets
+
+- Service env contracts:
+  - `frontend/.env.example`
+  - `backend/.env.example`
+  - `agent/.env.example`
+  - `infra/.env.example`
+- Secret sourcing and validation policy:
+  - `docs/environment-and-secrets.md`
 
 ## Agent notes
 
