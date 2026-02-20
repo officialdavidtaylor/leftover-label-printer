@@ -20,10 +20,7 @@ describe('pdf-renderer', () => {
       templateVersion: 'v1',
       payload: {
         itemName: 'Chili',
-        quantity: 2,
-        unit: 'cups',
-        preparedBy: 'Alex',
-        notes: 'Use by Friday',
+        datePrepared: '2026-02-20',
       },
     };
 
@@ -40,10 +37,9 @@ describe('pdf-renderer', () => {
     expect(pdfText).toContain('%PDF-1.4');
     expect(pdfText).toContain('/Type /Catalog');
     expect(pdfText).toContain('/Type /Page');
-    expect(pdfText).toContain('(Item: Chili) Tj');
-    expect(pdfText).toContain('(Qty: 2 cups) Tj');
-    expect(pdfText).toContain('(Prepared by: Alex) Tj');
-    expect(pdfText).toContain('(Notes: Use by Friday) Tj');
+    expect(pdfText).toContain('/MediaBox [0 0 153 72]');
+    expect(pdfText).toContain('(Chili) Tj');
+    expect(pdfText).toContain('(prepared: 2026-02-20) Tj');
   });
 
   it('matches the golden PDF bytes for the sample payload', () => {
@@ -52,10 +48,7 @@ describe('pdf-renderer', () => {
       templateVersion: 'v1',
       payload: {
         itemName: 'Chili',
-        quantity: 2,
-        unit: 'cups',
-        preparedBy: 'Alex',
-        notes: 'Use by Friday',
+        datePrepared: '2026-02-20',
       },
     });
 
@@ -68,7 +61,10 @@ describe('pdf-renderer', () => {
       renderPdfTemplate({
         templateId: 'label-default',
         templateVersion: 'v99',
-        payload: { itemName: 'Soup' },
+        payload: {
+          itemName: 'Soup',
+          datePrepared: '2026-02-20',
+        },
       })
     ).toThrowError(UnknownTemplateError);
   });
@@ -80,7 +76,8 @@ describe('pdf-renderer', () => {
         templateVersion: 'v1',
         payload: {
           itemName: '',
-          quantity: -3,
+          datePrepared: '02/20/2026',
+          quantity: 3,
         },
       });
       throw new Error('expected renderer to throw TemplatePayloadValidationError');
@@ -91,7 +88,8 @@ describe('pdf-renderer', () => {
       }
 
       expect(error.issues).toContain('itemName: Too small: expected string to have >=1 characters');
-      expect(error.issues).toContain('quantity: Too small: expected number to be >0');
+      expect(error.issues).toContain('datePrepared: expected YYYY-MM-DD');
+      expect(error.issues).toContain('payload: Unrecognized key: "quantity"');
     }
   });
 });
