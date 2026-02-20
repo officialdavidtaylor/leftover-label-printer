@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { authorizePrintJobOperation, buildForbiddenError } from '../auth/rbac-policy.ts';
+import { extractBearerToken } from '../auth/extract-bearer-token.ts';
 import { buildUnauthorizedError, type VerifiedJwtContext } from '../auth/jwt-verifier.ts';
 import type {
   JobEventDocument,
@@ -173,19 +174,6 @@ function orderEvents(events: readonly JobEventDocument[]): JobEventDocument[] {
   });
 
   return ordered;
-}
-
-function extractBearerToken(authorizationHeader: string | undefined): string | null {
-  if (!authorizationHeader) {
-    return null;
-  }
-
-  const match = authorizationHeader.match(/^Bearer\s+(.+)$/i);
-  if (!match || !match[1]) {
-    return null;
-  }
-
-  return match[1].trim();
 }
 
 function buildNotFoundError(traceId?: string): ErrorResponse {
