@@ -4,7 +4,12 @@ import { z } from 'zod';
 
 import { authorizePrintJobOperation, buildForbiddenError } from '../auth/rbac-policy.ts';
 import { buildUnauthorizedError, type VerifiedJwtContext } from '../auth/jwt-verifier.ts';
-import type { JobEventDocument, PrintJobAcceptedResponse, PrintJobState } from '../data/schema-contracts.ts';
+import type {
+  JobEventDocument,
+  PrintJobAcceptedResponse,
+  PrintJobState,
+  RenderedPdfMetadataDocument,
+} from '../data/schema-contracts.ts';
 import { DuplicateIdempotencyKeyError } from '../print-jobs/idempotent-submission.ts';
 
 const createPrintJobRequestSchema = z.object({
@@ -48,6 +53,7 @@ export type PersistedPrintJob = {
   acceptedAt: string;
   createdAt: string;
   updatedAt: string;
+  renderedPdf?: RenderedPdfMetadataDocument;
 };
 
 export interface CreatePrintJobStore {
