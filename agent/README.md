@@ -23,6 +23,20 @@ Containerized Raspberry Pi edge print agent service boundary.
 - `LP_COMMAND_PATH` controls which `lp` binary is validated and executed.
 - `AGENT_VALIDATE_ONLY=true` runs startup validation then exits.
 
+## Raspberry Pi host driver install (DYMO 450)
+
+Install CUPS plus the DYMO driver package directly on the Raspberry Pi host:
+
+```bash
+sudo ./scripts/agent/install-dymo-450-driver.sh
+```
+
+Notes:
+
+- This is a host-level setup step (not inside the agent container).
+- The script configures a CUPS queue named `dymo` by default (override with `QUEUE_NAME=<name>`).
+- If your distro does not provide `printer-driver-dymo`, the script falls back to `printer-driver-all`.
+
 ## Interface contracts
 
 1. MQTT backend-agent contract: `../contracts/asyncapi.yaml`.
