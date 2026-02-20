@@ -70,6 +70,25 @@ describe('schema-contracts', () => {
     }
   });
 
+  it('rejects invalid rendered PDF metadata shape when artifact metadata is present', () => {
+    const result = validatePrintJobDocument({
+      ...createPrintJobDocument(),
+      renderedPdf: {
+        bucket: '',
+        key: 'rendered-pdfs/jobs/job-1/rendered.pdf',
+        contentType: 'application/pdf',
+        contentLength: -1,
+        checksumSha256: 'abc123',
+        uploadedAt: 'not-a-date',
+      },
+    });
+
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.failures.some((failure) => failure.field === 'renderedPdf')).toBe(true);
+    }
+  });
+
   it('rejects invalid agent event shape and failed event without error details', () => {
     const result = validateJobEventDocument({
       ...createJobEventDocument(),

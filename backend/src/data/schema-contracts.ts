@@ -23,6 +23,7 @@ const nonEmptyStringSchema = z.string().trim().min(1);
 const isoTimestampSchema = nonEmptyStringSchema.refine((value) => !Number.isNaN(Date.parse(value)), {
   message: 'expected ISO-8601 timestamp',
 });
+const nonNegativeIntegerSchema = z.number().int().min(0);
 const jsonObjectSchema = z.record(z.string(), z.unknown());
 
 const printJobStateSchema = z.enum(PRINT_JOB_STATES);
@@ -30,6 +31,16 @@ const jobEventSourceSchema = z.enum(JOB_EVENT_SOURCES);
 const printerStatusSchema = z.enum(PRINTER_STATUSES);
 const templateStatusSchema = z.enum(TEMPLATE_STATUSES);
 const jobEventOutcomeSchema = z.enum(['printed', 'failed']);
+
+export const renderedPdfMetadataSchema = z.object({
+  bucket: nonEmptyStringSchema,
+  key: nonEmptyStringSchema,
+  contentType: nonEmptyStringSchema,
+  contentLength: nonNegativeIntegerSchema,
+  checksumSha256: nonEmptyStringSchema,
+  uploadedAt: isoTimestampSchema,
+  eTag: nonEmptyStringSchema.optional(),
+});
 
 export const printJobDocumentSchema = z.object({
   jobId: nonEmptyStringSchema,
@@ -43,6 +54,7 @@ export const printJobDocumentSchema = z.object({
   acceptedAt: isoTimestampSchema,
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
+  renderedPdf: renderedPdfMetadataSchema.optional(),
 });
 
 export const jobEventDocumentSchema = z
@@ -147,6 +159,7 @@ export const templateDocumentSchema = z.object({
 });
 
 export type PrintJobDocument = z.infer<typeof printJobDocumentSchema>;
+export type RenderedPdfMetadataDocument = z.infer<typeof renderedPdfMetadataSchema>;
 export type JobEventDocument = z.infer<typeof jobEventDocumentSchema>;
 export type PrinterDocument = z.infer<typeof printerDocumentSchema>;
 export type TemplateDocument = z.infer<typeof templateDocumentSchema>;
