@@ -1,4 +1,4 @@
-import { createMachine } from 'xstate';
+import { createMachine, transition } from 'xstate';
 
 export const PRINT_JOB_STATES = [
   'pending',
@@ -78,23 +78,22 @@ const printJobStateMachine = createMachine<Record<string, never>, TransitionMach
     id: 'printJobLifecycle',
     initial: 'pending',
     context: {},
-    predictableActionArguments: true,
     states: {
       pending: {
         on: {
-          TO_PROCESSING: { target: 'processing', cond: 'isBackendSource' },
+          TO_PROCESSING: { target: 'processing', guard: 'isBackendSource' },
         },
       },
       processing: {
         on: {
-          TO_DISPATCHED: { target: 'dispatched', cond: 'isBackendSource' },
-          TO_FAILED: { target: 'failed', cond: 'isBackendSource' },
+          TO_DISPATCHED: { target: 'dispatched', guard: 'isBackendSource' },
+          TO_FAILED: { target: 'failed', guard: 'isBackendSource' },
         },
       },
       dispatched: {
         on: {
-          TO_PRINTED: { target: 'printed', cond: 'isAgentSource' },
-          TO_FAILED: { target: 'failed', cond: 'isAgentSource' },
+          TO_PRINTED: { target: 'printed', guard: 'isAgentSource' },
+          TO_FAILED: { target: 'failed', guard: 'isAgentSource' },
         },
       },
       printed: {},
@@ -103,8 +102,8 @@ const printJobStateMachine = createMachine<Record<string, never>, TransitionMach
   },
   {
     guards: {
-      isBackendSource: (_context, event) => event.source === 'backend',
-      isAgentSource: (_context, event) => event.source === 'agent',
+      isBackendSource: ({ event }) => event.source === 'backend',
+      isAgentSource: ({ event }) => event.source === 'agent',
     },
   }
 );
@@ -197,7 +196,9 @@ export function sourceCanApplyTransition(
 }
 
 function transitionState(from: PrintJobState, event: TransitionMachineEvent): PrintJobState {
-  const nextValue = printJobStateMachine.transition(from, event).value;
+  const snapshot = printJobStateMachine.resolveState({ value: from, context: {} });
+  const [nextSnapshot] = transition(printJobStateMachine, snapshot, event);
+  const nextValue = nextSnapshot.value;
 
   if (typeof nextValue !== 'string') {
     throw new Error('unexpected non-atomic state value in printJobStateMachine');

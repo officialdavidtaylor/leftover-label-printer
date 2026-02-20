@@ -12,6 +12,6 @@
     "vitest": "^3.0.7"
   },
   "dependencies": {
-    "xstate": "^4.38.3"
+    "xstate": "^5.28.0"
   }
 }
