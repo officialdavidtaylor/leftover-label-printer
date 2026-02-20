@@ -2,17 +2,27 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { z } from 'zod';
 
 type EnvMap = Record<string, string>;
 
-const REQUIRED_KEYS = [
-  'EMQX_DASHBOARD_USERNAME',
-  'EMQX_DASHBOARD_PASSWORD',
-  'EMQX_BACKEND_MQTT_USERNAME',
-  'EMQX_BACKEND_MQTT_PASSWORD',
-  'EMQX_AGENT_MQTT_USERNAME',
-  'EMQX_AGENT_MQTT_PASSWORD',
-] as const;
+const requiredEnvString = (key: string) =>
+  z.string().min(1, `infra bootstrap: required key is blank: ${key}`);
+
+const envSchema = z
+  .object({
+    EMQX_DASHBOARD_USERNAME: requiredEnvString('EMQX_DASHBOARD_USERNAME'),
+    EMQX_DASHBOARD_PASSWORD: requiredEnvString('EMQX_DASHBOARD_PASSWORD'),
+    EMQX_BACKEND_MQTT_USERNAME: requiredEnvString('EMQX_BACKEND_MQTT_USERNAME'),
+    EMQX_BACKEND_MQTT_PASSWORD: requiredEnvString('EMQX_BACKEND_MQTT_PASSWORD'),
+    EMQX_AGENT_MQTT_USERNAME: requiredEnvString('EMQX_AGENT_MQTT_USERNAME'),
+    EMQX_AGENT_MQTT_PASSWORD: requiredEnvString('EMQX_AGENT_MQTT_PASSWORD'),
+    EMQX_API_URL: z.string().min(1).default('http://localhost:18083/api/v5'),
+  })
+  .refine(
+    (value) => value.EMQX_BACKEND_MQTT_USERNAME !== value.EMQX_AGENT_MQTT_USERNAME,
+    'infra bootstrap: backend and agent usernames must be distinct.'
+  );
 
 function parseEnvFile(envText: string): EnvMap {
   const env: EnvMap = {};
@@ -42,14 +52,6 @@ function parseEnvFile(envText: string): EnvMap {
   return env;
 }
 
-function getRequiredValue(env: EnvMap, key: string): string {
-  const value = env[key] ?? '';
-  if (value === '') {
-    throw new Error(`infra bootstrap: required key is blank: ${key}`);
-  }
-  return value;
-}
-
 type RequestResult = {
   status: number;
   body: string;
@@ -72,25 +74,20 @@ async function main(argv: string[]): Promise<void> {
     throw new Error(`infra bootstrap: env file not found: ${envFile}`);
   }
 
-  const env = parseEnvFile(fs.readFileSync(envPath, 'utf8'));
-
-  for (const key of REQUIRED_KEYS) {
-    getRequiredValue(env, key);
+  const parsedEnv = envSchema.safeParse(parseEnvFile(fs.readFileSync(envPath, 'utf8')));
+  if (!parsedEnv.success) {
+    const firstIssue = parsedEnv.error.issues[0];
+    throw new Error(firstIssue?.message ?? 'infra bootstrap: invalid env configuration.');
   }
+  const env = parsedEnv.data;
 
-  const backendUsername = getRequiredValue(env, 'EMQX_BACKEND_MQTT_USERNAME');
-  const backendPassword = getRequiredValue(env, 'EMQX_BACKEND_MQTT_PASSWORD');
-  const agentUsername = getRequiredValue(env, 'EMQX_AGENT_MQTT_USERNAME');
-  const agentPassword = getRequiredValue(env, 'EMQX_AGENT_MQTT_PASSWORD');
-
-  if (backendUsername === agentUsername) {
-    throw new Error('infra bootstrap: backend and agent usernames must be distinct.');
-  }
-
-  const dashboardUsername = getRequiredValue(env, 'EMQX_DASHBOARD_USERNAME');
-  const dashboardPassword = getRequiredValue(env, 'EMQX_DASHBOARD_PASSWORD');
-
-  const apiUrl = env.EMQX_API_URL || 'http://localhost:18083/api/v5';
+  const backendUsername = env.EMQX_BACKEND_MQTT_USERNAME;
+  const backendPassword = env.EMQX_BACKEND_MQTT_PASSWORD;
+  const agentUsername = env.EMQX_AGENT_MQTT_USERNAME;
+  const agentPassword = env.EMQX_AGENT_MQTT_PASSWORD;
+  const dashboardUsername = env.EMQX_DASHBOARD_USERNAME;
+  const dashboardPassword = env.EMQX_DASHBOARD_PASSWORD;
+  const apiUrl = env.EMQX_API_URL;
   const authenticatorUrl = `${apiUrl}/authentication/password_based%3Abuilt_in_database`;
 
   const loginResponse = await request(`${apiUrl}/login`, {
