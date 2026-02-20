@@ -12,6 +12,7 @@ Read these files before starting any implementation task:
 6. `docs/security.md`
 7. `docs/definition-of-done.md`
 8. `docs/environment-and-secrets.md`
+9. `docs/local-dependency-stack.md`
 
 Repository implementation conventions:
 

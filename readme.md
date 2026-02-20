@@ -71,6 +71,12 @@ You can also run a target for a single service from root:
 - Secret sourcing and validation policy:
   - `docs/environment-and-secrets.md`
 
+## Local dependency stack
+
+- Compose stack definition: `infra/docker-compose.yml`
+- Bootstrap guide: `docs/local-dependency-stack.md`
+- One-command startup: `make -C infra up`
+
 ## Agent notes
 
 ### Migration context pack
