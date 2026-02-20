@@ -1,6 +1,4 @@
-export const MVP_ROLES = ['user', 'sysadmin'] as const;
-
-export type MvpRole = (typeof MVP_ROLES)[number];
+import { type MvpRole, isMvpRole } from './roles.ts';
 
 export type PrintJobOperation = 'createPrintJob' | 'getPrintJob';
 
@@ -55,8 +53,4 @@ export function buildForbiddenError(traceId?: string): ErrorResponse {
     message: 'Forbidden',
     ...(traceId ? { traceId } : {}),
   };
-}
-
-function isMvpRole(value: string): value is MvpRole {
-  return value === 'user' || value === 'sysadmin';
 }

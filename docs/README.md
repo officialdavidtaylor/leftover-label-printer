@@ -15,6 +15,7 @@ Read these files before starting any implementation task:
 9. `docs/local-dependency-stack.md`
 10. `docs/ci.md`
 11. `docs/rbac-authorization-matrix.md`
+12. `docs/authentik-oidc-setup.md`
 
 Repository implementation conventions:
 
