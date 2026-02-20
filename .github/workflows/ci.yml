@@ -52,6 +52,26 @@ jobs:
       - name: Validate OpenAPI contract artifact
         run: npm run contracts:test
 
+  backend-provider-contract:
+    name: backend-provider-contract
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run backend provider contract tests
+        run: npm run provider-contract:test
+
   image-build:
     name: image-build (${{ matrix.service }})
     runs-on: ubuntu-latest

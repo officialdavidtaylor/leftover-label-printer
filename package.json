@@ -6,7 +6,8 @@
     "env:validate": "node --experimental-strip-types scripts/env/validate-env.ts",
     "env:test": "vitest run tests/env/validate-env.test.ts",
     "contracts:test": "vitest run tests/contracts",
-    "backend:test": "vitest run tests/backend"
+    "backend:test": "vitest run tests/backend",
+    "provider-contract:test": "vitest run tests/backend/provider-contract-harness.test.ts tests/backend/provider-openapi-contract.test.ts"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "^12.1.0",
