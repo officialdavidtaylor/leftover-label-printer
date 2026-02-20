@@ -85,7 +85,9 @@ You can also run a target for a single service from root:
 ## API contract governance
 
 - HTTP contract source: `contracts/openapi.yaml`
+- MQTT contract source: `contracts/asyncapi.yaml`
 - Versioning and deprecation policy: `docs/openapi-versioning-policy.md`
+- MQTT versioning and deprecation policy: `docs/asyncapi-versioning-policy.md`
 
 ## Agent notes
 

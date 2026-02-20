@@ -18,6 +18,7 @@ Read these files before starting any implementation task:
 12. `docs/authentik-oidc-setup.md`
 13. `docs/jwt-verification.md`
 14. `docs/openapi-versioning-policy.md`
+15. `docs/asyncapi-versioning-policy.md`
 
 Repository implementation conventions:
 

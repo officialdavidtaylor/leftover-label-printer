@@ -15,9 +15,9 @@
 2. Backend validates auth, payload, and target printer.
 3. Backend writes job + initial event to MongoDB.
 4. Backend renders PDF and uploads to object storage.
-5. Backend publishes MQTT command on `printers/{printerId}/jobs`.
+5. Backend publishes MQTT command on `printers/{id}/jobs`.
 6. Edge agent receives command, downloads PDF, and calls `lp`.
-7. Edge agent publishes terminal status (`printed` or `failed`) on `printers/{printerId}/status`.
+7. Edge agent publishes terminal status (`printed` or `failed`) on `printers/{id}/status`.
 8. Backend consumes status and applies state transition.
 
 ## Trust Boundaries
