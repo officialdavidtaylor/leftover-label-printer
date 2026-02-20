@@ -4,6 +4,8 @@
 
 `pending`, `processing`, `dispatched`, `printed`, `failed`
 
+Implementation note: transition logic is modeled with an XState machine in `backend/src/print-jobs/state-machine-contract.ts`.
+
 ## Allowed Transitions
 
 1. `pending -> processing` (source: `backend`)

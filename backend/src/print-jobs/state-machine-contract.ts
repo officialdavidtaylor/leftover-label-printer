@@ -1,3 +1,5 @@
+import { createMachine } from 'xstate';
+
 export const PRINT_JOB_STATES = [
   'pending',
   'processing',
@@ -17,8 +19,6 @@ export type TransitionEvent = {
   targetState: PrintJobState;
   occurredAt: string;
 };
-
-export type TransitionKey = `${PrintJobState}->${PrintJobState}`;
 
 export type TransitionRejectReason =
   | 'duplicate_event'
@@ -66,14 +66,48 @@ export type TransitionDecision =
       audit: TransitionAuditRecord;
     };
 
+type TransitionMachineEvent = {
+  type: 'TO_PENDING' | 'TO_PROCESSING' | 'TO_DISPATCHED' | 'TO_PRINTED' | 'TO_FAILED';
+  source: TransitionSource;
+};
+
 const TERMINAL_STATES = new Set<PrintJobState>(['printed', 'failed']);
-const MATRIX: ReadonlySet<TransitionKey> = new Set<TransitionKey>([
-  'pending->processing',
-  'processing->dispatched',
-  'processing->failed',
-  'dispatched->printed',
-  'dispatched->failed',
-]);
+
+const printJobStateMachine = createMachine<Record<string, never>, TransitionMachineEvent>(
+  {
+    id: 'printJobLifecycle',
+    initial: 'pending',
+    context: {},
+    predictableActionArguments: true,
+    states: {
+      pending: {
+        on: {
+          TO_PROCESSING: { target: 'processing', cond: 'isBackendSource' },
+        },
+      },
+      processing: {
+        on: {
+          TO_DISPATCHED: { target: 'dispatched', cond: 'isBackendSource' },
+          TO_FAILED: { target: 'failed', cond: 'isBackendSource' },
+        },
+      },
+      dispatched: {
+        on: {
+          TO_PRINTED: { target: 'printed', cond: 'isAgentSource' },
+          TO_FAILED: { target: 'failed', cond: 'isAgentSource' },
+        },
+      },
+      printed: {},
+      failed: {},
+    },
+  },
+  {
+    guards: {
+      isBackendSource: (_context, event) => event.source === 'backend',
+      isAgentSource: (_context, event) => event.source === 'agent',
+    },
+  }
+);
 
 export function applyPrintJobTransition(input: {
   jobId: string;
@@ -145,7 +179,12 @@ export function applyPrintJobTransition(input: {
 }
 
 export function isTransitionAllowed(from: PrintJobState, to: PrintJobState): boolean {
-  return MATRIX.has(`${from}->${to}`);
+  const eventType = toMachineEventType(to);
+
+  return (
+    transitionState(from, { type: eventType, source: 'backend' }) !== from ||
+    transitionState(from, { type: eventType, source: 'agent' }) !== from
+  );
 }
 
 export function sourceCanApplyTransition(
@@ -153,18 +192,32 @@ export function sourceCanApplyTransition(
   to: PrintJobState,
   source: TransitionSource
 ): boolean {
-  const transition = `${from}->${to}`;
+  const eventType = toMachineEventType(to);
+  return transitionState(from, { type: eventType, source }) !== from;
+}
 
-  switch (transition) {
-    case 'pending->processing':
-    case 'processing->dispatched':
-    case 'processing->failed':
-      return source === 'backend';
-    case 'dispatched->printed':
-    case 'dispatched->failed':
-      return source === 'agent';
-    default:
-      return false;
+function transitionState(from: PrintJobState, event: TransitionMachineEvent): PrintJobState {
+  const nextValue = printJobStateMachine.transition(from, event).value;
+
+  if (typeof nextValue !== 'string') {
+    throw new Error('unexpected non-atomic state value in printJobStateMachine');
+  }
+
+  return nextValue as PrintJobState;
+}
+
+function toMachineEventType(to: PrintJobState): TransitionMachineEvent['type'] {
+  switch (to) {
+    case 'pending':
+      return 'TO_PENDING';
+    case 'processing':
+      return 'TO_PROCESSING';
+    case 'dispatched':
+      return 'TO_DISPATCHED';
+    case 'printed':
+      return 'TO_PRINTED';
+    case 'failed':
+      return 'TO_FAILED';
   }
 }
 
