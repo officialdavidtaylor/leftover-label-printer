@@ -313,6 +313,8 @@ function epochSecondsFromNow(offsetSeconds: number): number {
   return Math.floor(Date.now() / 1_000) + offsetSeconds;
 }
 
+// Keep JWT crypto fixtures local to this spec while they are only used here.
+// If another test file needs these helpers, extract to tests/helpers/jwt-fixtures.ts.
 function createRsaSigningKey(kid: string): {
   kid: string;
   privateKey: KeyObject;
