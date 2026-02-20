@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const fileDir = path.dirname(fileURLToPath(import.meta.url));
-const scriptPath = path.resolve(fileDir, '../../infra/scripts/validate-emqx-security.sh');
+const scriptPath = path.resolve(fileDir, '../../infra/scripts/validate-emqx-security.ts');
 
 function withTmpDir(fn: (dir: string) => void): void {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'emqx-security-'));
@@ -28,7 +28,9 @@ describe('validate-emqx-security', () => {
       const envPath = path.join(dir, '.env');
       writeFile(envPath, 'EMQX_DEPLOYMENT_ENV=local\nEMQX_REQUIRE_TLS=false\nEMQX_ENABLE_PLAIN_MQTT=true\n');
 
-      const run = spawnSync('/bin/sh', [scriptPath, envPath], { encoding: 'utf8' });
+      const run = spawnSync(process.execPath, ['--experimental-strip-types', scriptPath, envPath], {
+        encoding: 'utf8',
+      });
       expect(run.status).toBe(0);
       expect(run.stdout).toMatch(/guardrails passed/);
     });
@@ -39,7 +41,9 @@ describe('validate-emqx-security', () => {
       const envPath = path.join(dir, '.env');
       writeFile(envPath, 'EMQX_DEPLOYMENT_ENV=staging\nEMQX_REQUIRE_TLS=false\nEMQX_ENABLE_PLAIN_MQTT=false\n');
 
-      const run = spawnSync('/bin/sh', [scriptPath, envPath], { encoding: 'utf8' });
+      const run = spawnSync(process.execPath, ['--experimental-strip-types', scriptPath, envPath], {
+        encoding: 'utf8',
+      });
       expect(run.status).toBe(1);
       expect(run.stderr).toMatch(/EMQX_REQUIRE_TLS must be true/);
     });
@@ -63,7 +67,9 @@ EMQX_TLS_KEY_FILE=server.key
 `
       );
 
-      const run = spawnSync('/bin/sh', [scriptPath, envPath], { encoding: 'utf8' });
+      const run = spawnSync(process.execPath, ['--experimental-strip-types', scriptPath, envPath], {
+        encoding: 'utf8',
+      });
       expect(run.status).toBe(1);
       expect(run.stderr).toMatch(/missing TLS file/);
     });
@@ -90,7 +96,9 @@ EMQX_TLS_KEY_FILE=server.key
 `
       );
 
-      const run = spawnSync('/bin/sh', [scriptPath, envPath], { encoding: 'utf8' });
+      const run = spawnSync(process.execPath, ['--experimental-strip-types', scriptPath, envPath], {
+        encoding: 'utf8',
+      });
       expect(run.status).toBe(0);
       expect(run.stdout).toMatch(/guardrails passed for production/);
     });
