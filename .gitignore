@@ -54,3 +54,6 @@ go.work.sum
 *.pid
 *.seed
 *.pid.lock
+infra/emqx/certs/*
+!infra/emqx/certs/.gitkeep
+!infra/emqx/certs/README.md

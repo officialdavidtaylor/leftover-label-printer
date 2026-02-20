@@ -25,14 +25,34 @@ services:
     restart: unless-stopped
     ports:
       - "1883:1883"
+      - "8883:8883"
       - "18083:18083"
     environment:
       EMQX_DASHBOARD__DEFAULT_USERNAME: ${EMQX_DASHBOARD_USERNAME:-admin}
       EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:-public}
       EMQX_NODE__NAME: emqx@127.0.0.1
       EMQX_ALLOW_ANONYMOUS: "false"
+      EMQX_AUTHENTICATION__1__ENABLE: "true"
+      EMQX_AUTHENTICATION__1__MECHANISM: password_based
+      EMQX_AUTHENTICATION__1__BACKEND: built_in_database
+      EMQX_AUTHENTICATION__1__USER_ID_TYPE: username
+      EMQX_AUTHORIZATION__NO_MATCH: deny
+      EMQX_AUTHORIZATION__DENY_ACTION: disconnect
+      EMQX_AUTHORIZATION__SOURCES__1__TYPE: file
+      EMQX_AUTHORIZATION__SOURCES__1__ENABLE: "true"
+      EMQX_AUTHORIZATION__SOURCES__1__PATH: /opt/emqx/etc/acl.conf
+      EMQX_LISTENERS__TCP__DEFAULT__ENABLE: ${EMQX_ENABLE_PLAIN_MQTT:-true}
+      EMQX_LISTENERS__SSL__DEFAULT__ENABLE: ${EMQX_REQUIRE_TLS:-false}
+      EMQX_LISTENERS__SSL__DEFAULT__BIND: "0.0.0.0:8883"
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CACERTFILE: /opt/emqx/etc/certs/${EMQX_TLS_CA_CERT_FILE:-ca.crt}
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CERTFILE: /opt/emqx/etc/certs/${EMQX_TLS_CERT_FILE:-server.crt}
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__KEYFILE: /opt/emqx/etc/certs/${EMQX_TLS_KEY_FILE:-server.key}
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__VERIFY: verify_none
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__FAIL_IF_NO_PEER_CERT: "false"
     volumes:
       - emqx_data:/opt/emqx/data
+      - ./emqx/acl.conf:/opt/emqx/etc/acl.conf:ro
+      - ./emqx/certs:/opt/emqx/etc/certs:ro
     healthcheck:
       test:
         - CMD-SHELL

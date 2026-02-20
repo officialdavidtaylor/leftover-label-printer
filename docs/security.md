@@ -17,10 +17,13 @@
 
 1. Broker: self-hosted EMQX with TLS in non-local environments.
 2. Device identity: unique credentials per edge node.
-3. Topic ACL backend publish: `printers/{id}/jobs`.
-4. Topic ACL backend subscribe: `printers/{id}/status`.
-5. Topic ACL agent permissions are limited to its own `printerId`.
-6. No wildcard publish rights for edge nodes.
+3. TLS guardrail: if `EMQX_DEPLOYMENT_ENV` is not `local`, `EMQX_REQUIRE_TLS=true` and `EMQX_ENABLE_PLAIN_MQTT=false` are required.
+4. Client authentication: EMQX password-based auth is enabled with distinct backend and agent credentials.
+5. Topic ACL backend publish: `printers/+/jobs`.
+6. Topic ACL backend subscribe: `printers/+/status`.
+7. Topic ACL agent permissions are limited to its own `printerId` via `username=printerId`, and ACLs only allow subscribe `printers/${username}/jobs` and publish `printers/${username}/status`.
+8. No wildcard publish rights for edge nodes.
+9. Default authorization behavior is deny when no ACL rule matches.
 
 ## Object Storage Security
 
