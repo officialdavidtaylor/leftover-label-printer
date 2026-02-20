@@ -16,7 +16,7 @@ install:
 	fi
 
 validate-security: install
-	@./scripts/validate-emqx-security.sh "$(ENV_FILE)"
+	@node --experimental-strip-types ./scripts/validate-emqx-security.ts "$(ENV_FILE)"
 
 bootstrap-auth: install
 	@node --experimental-strip-types ./scripts/bootstrap-emqx-auth.ts "$(ENV_FILE)"
