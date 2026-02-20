@@ -32,6 +32,26 @@ jobs:
       - name: Test (${{ matrix.service }})
         run: make test-${{ matrix.service }}
 
+  contract-artifact-validation:
+    name: contract-artifact-validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate OpenAPI contract artifact
+        run: npm run contracts:test
+
   image-build:
     name: image-build (${{ matrix.service }})
     runs-on: ubuntu-latest

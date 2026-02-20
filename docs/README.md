@@ -17,6 +17,7 @@ Read these files before starting any implementation task:
 11. `docs/rbac-authorization-matrix.md`
 12. `docs/authentik-oidc-setup.md`
 13. `docs/jwt-verification.md`
+14. `docs/openapi-versioning-policy.md`
 
 Repository implementation conventions:
 

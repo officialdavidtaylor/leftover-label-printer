@@ -82,6 +82,11 @@ You can also run a target for a single service from root:
 - Workflow: `.github/workflows/ci.yml`
 - CI baseline docs: `docs/ci.md`
 
+## API contract governance
+
+- HTTP contract source: `contracts/openapi.yaml`
+- Versioning and deprecation policy: `docs/openapi-versioning-policy.md`
+
 ## Agent notes
 
 ### Migration context pack

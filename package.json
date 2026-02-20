@@ -4,9 +4,12 @@
   "type": "module",
   "scripts": {
     "env:validate": "node --experimental-strip-types scripts/env/validate-env.ts",
-    "env:test": "vitest run tests/env/validate-env.test.ts"
+    "env:test": "vitest run tests/env/validate-env.test.ts",
+    "contracts:test": "vitest run tests/contracts",
+    "backend:test": "vitest run tests/backend"
   },
   "devDependencies": {
+    "@apidevtools/swagger-parser": "^12.1.0",
     "@faker-js/faker": "^10.3.0",
     "@types/node": "^22.13.10",
     "typescript": "^5.8.2",

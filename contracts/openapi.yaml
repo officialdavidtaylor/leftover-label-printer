@@ -7,6 +7,13 @@ info:
     Versioning policy uses semantic versioning (semver).
     Breaking changes require a major version bump and a documented deprecation window with migration guidance.
     Authorization decisions are derived from JWT `roles` claim values.
+x-versioning-policy:
+  scheme: semver
+  breakingChange:
+    requiresMajorVersionBump: true
+    minimumDeprecationWindowDays: 90
+    migrationGuideRequired: true
+    owner: api-team
 servers:
   - url: https://api.example.com
 security:
@@ -23,6 +30,24 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/PrintJobCreateRequest'
+            examples:
+              minimal:
+                summary: Minimal payload
+                value:
+                  idempotencyKey: idem-001
+                  printerId: printer-1
+                  templateId: template-1
+                  payload:
+                    itemName: Chicken soup
+              withTemplateVersion:
+                summary: Template version override
+                value:
+                  idempotencyKey: idem-002
+                  printerId: printer-1
+                  templateId: template-1
+                  templateVersion: v2
+                  payload:
+                    itemName: Chili
       responses:
         '202':
           description: Job accepted
@@ -30,24 +55,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PrintJobAcceptedResponse'
+              examples:
+                accepted:
+                  value:
+                    jobId: job-123
+                    state: pending
+                    acceptedAt: 2026-02-20T20:00:00.000Z
+                    traceId: trace-123
         '400':
           description: Validation error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                validationError:
+                  value:
+                    code: validation_error
+                    message: Validation error
+                    traceId: trace-123
         '401':
           description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                unauthorized:
+                  value:
+                    code: unauthorized
+                    message: Unauthorized
+                    traceId: trace-123
         '403':
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                forbidden:
+                  value:
+                    code: forbidden
+                    message: Forbidden
+                    traceId: trace-123
   /v1/print-jobs/{jobId}:
     get:
       operationId: getPrintJob
@@ -59,6 +109,7 @@ paths:
           required: true
           schema:
             type: string
+            minLength: 1
       responses:
         '200':
           description: Job found
@@ -66,6 +117,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PrintJobStatusResponse'
+              examples:
+                jobStatus:
+                  value:
+                    jobId: job-123
+                    state: processing
+                    printerId: printer-1
+                    templateId: template-1
+                    templateVersion: v2
+                    events:
+                      - eventId: event-1
+                        jobId: job-123
+                        type: pending
+                        source: backend
+                        occurredAt: 2026-02-20T20:00:00.000Z
+                        traceId: trace-123
         '401':
           description: Unauthorized
           content:
@@ -105,12 +171,16 @@ components:
       properties:
         idempotencyKey:
           type: string
+          minLength: 1
         printerId:
           type: string
+          minLength: 1
         templateId:
           type: string
+          minLength: 1
         templateVersion:
           type: string
+          minLength: 1
         payload:
           type: object
           additionalProperties: true
@@ -206,6 +276,11 @@ components:
       properties:
         code:
           type: string
+          enum:
+            - validation_error
+            - unauthorized
+            - forbidden
+            - not_found
         message:
           type: string
         traceId:
