@@ -5,17 +5,21 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const USAGE =
-  'usage: node scripts/env/validate-env.mjs [--keys-only] <required-keys-file> <env-file>';
+  'usage: node --experimental-strip-types scripts/env/validate-env.ts [--keys-only] <required-keys-file> <env-file>';
 
-function parseRequiredKeys(requiredText) {
+type ValidateEnvOptions = {
+  keysOnly?: boolean;
+};
+
+function parseRequiredKeys(requiredText: string): string[] {
   return requiredText
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line !== '' && !line.startsWith('#'));
 }
 
-function parseEnvEntries(envText) {
-  const envEntries = new Map();
+function parseEnvEntries(envText: string): Map<string, string> {
+  const envEntries = new Map<string, string>();
 
   for (const rawLine of envText.split(/\r?\n/)) {
     const trimmed = rawLine.trim();
@@ -43,12 +47,16 @@ function parseEnvEntries(envText) {
   return envEntries;
 }
 
-export function validateEnv(requiredText, envText, options = {}) {
+export function validateEnv(
+  requiredText: string,
+  envText: string,
+  options: ValidateEnvOptions = {}
+): string[] {
   const { keysOnly = false } = options;
   const requiredKeys = parseRequiredKeys(requiredText);
   const envEntries = parseEnvEntries(envText);
 
-  const missingKeys = [];
+  const missingKeys: string[] = [];
 
   for (const key of requiredKeys) {
     if (!envEntries.has(key)) {
@@ -64,13 +72,17 @@ export function validateEnv(requiredText, envText, options = {}) {
   return missingKeys;
 }
 
-export function validateEnvFiles(requiredFile, envFile, options = {}) {
+export function validateEnvFiles(
+  requiredFile: string,
+  envFile: string,
+  options: ValidateEnvOptions = {}
+): string[] {
   const requiredText = fs.readFileSync(requiredFile, 'utf8');
   const envText = fs.readFileSync(envFile, 'utf8');
   return validateEnv(requiredText, envText, options);
 }
 
-function main(argv) {
+function main(argv: string[]): void {
   const args = [...argv];
   let keysOnly = false;
 

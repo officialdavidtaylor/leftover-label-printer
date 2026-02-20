@@ -49,7 +49,7 @@ You can also run a target for a single service from root:
 2. Install required toolchains from `.tool-versions` (`nodejs` and `go`).
 3. Run `make install` from repository root.
 4. Copy each service `.env.example` file to `.env` and populate required secrets.
-5. Validate env contracts with `make env-test` and `node scripts/env/validate-env.mjs`.
+5. Validate env contracts with `make env-test` and `node --experimental-strip-types scripts/env/validate-env.ts`.
 6. Run `make smoke` to verify command wiring.
 7. Move into a service directory and run `make <target>` while iterating.
 
