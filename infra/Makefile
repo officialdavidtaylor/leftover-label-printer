@@ -19,7 +19,7 @@ validate-security: install
 	@./scripts/validate-emqx-security.sh "$(ENV_FILE)"
 
 bootstrap-auth: install
-	@./scripts/bootstrap-emqx-auth.sh "$(ENV_FILE)"
+	@node --experimental-strip-types ./scripts/bootstrap-emqx-auth.ts "$(ENV_FILE)"
 
 lint: validate-security
 	@if command -v docker >/dev/null 2>&1; then \
@@ -42,7 +42,7 @@ build:
 
 up: validate-security
 	@$(COMPOSE_CMD) up -d --wait
-	@./scripts/bootstrap-emqx-auth.sh "$(ENV_FILE)"
+	@node --experimental-strip-types ./scripts/bootstrap-emqx-auth.ts "$(ENV_FILE)"
 
 down: install
 	@$(COMPOSE_CMD) down --remove-orphans
