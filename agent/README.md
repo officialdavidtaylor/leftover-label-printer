@@ -23,6 +23,12 @@ Containerized Raspberry Pi edge print agent service boundary.
 - `LP_COMMAND_PATH` controls which `lp` binary is validated and executed.
 - `AGENT_VALIDATE_ONLY=true` runs startup validation then exits.
 
+## Interface contracts
+
+1. MQTT backend-agent contract: `../contracts/asyncapi.yaml`.
+2. MQTT versioning policy: `../docs/asyncapi-versioning-policy.md`.
+3. Topic ACL and broker security expectations: `../docs/security.md`.
+
 ## Container image
 
 The image is built as a multi-stage Go build and supports architecture-targeted output via `TARGETARCH`.

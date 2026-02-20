@@ -1,11 +1,56 @@
+# OS / editor cruft
 .DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
 
-/bin
-tmp/
-node_modules/
+# Local Codex state
+.codex/
+
+# Environment files (keep examples)
 .env
 .env.*
 !.env.example
 **/.env
 **/.env.*
 !**/.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Node / React
+node_modules/
+**/node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+.parcel-cache/
+coverage/
+**/coverage/
+dist/
+**/dist/
+build/
+**/build/
+.cache/
+*.tsbuildinfo
+
+# Go
+/bin/
+bin/
+tmp/
+*.test
+*.out
+coverage.out
+cover.out
+.coverprofile
+go.work.sum
+
+# Misc runtime artifacts
+*.pid
+*.seed
+*.pid.lock
