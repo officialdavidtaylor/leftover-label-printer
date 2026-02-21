@@ -6,9 +6,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/config"
+	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/mqttclient"
+	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/mqttconsume"
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/print"
 )
 
@@ -34,27 +35,54 @@ func main() {
 		return
 	}
 
-	runMainLoop(cfg.PollInterval)
-}
-
-func runMainLoop(pollInterval time.Duration) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
-
-	log.Printf("agent running (poll_interval=%s)", pollInterval)
-
-	for {
-		select {
-		case <-ctx.Done():
-			log.Print("shutdown signal received")
-			return
-		case <-ticker.C:
-			// TODO(USE-54): Replace this placeholder poll tick with a real queue consumer loop.
-			// https://linear.app/useful-code/issue/USE-54/inf-05-replace-remaining-service-stubs-and-placeholder-runtime-loops
-			log.Print("poll tick: awaiting queue consumer implementation")
-		}
+	client, err := mqttclient.NewPahoClient(mqttclient.Config{
+		BrokerURL: cfg.MQTTBrokerURL,
+		ClientID:  cfg.MQTTClientID,
+		Username:  cfg.MQTTUsername,
+		Password:  cfg.MQTTPassword,
+	})
+	if err != nil {
+		log.Fatalf("build mqtt client: %v", err)
 	}
+
+	log.Printf("agent mqtt consumer starting (printer_id=%s broker=%s)", cfg.PrinterID, cfg.MQTTBrokerURL)
+
+	err = mqttconsume.ConsumeLoop(ctx, mqttconsume.Options{
+		PrinterID: cfg.PrinterID,
+		Client:    client,
+		Logger:    stdlibConsumeLogger{},
+		OnCommand: handlePrintJobCommand,
+	})
+	if err != nil {
+		log.Fatalf("consume loop failed: %v", err)
+	}
+
+	log.Print("shutdown signal received")
+}
+
+func handlePrintJobCommand(_ context.Context, command mqttconsume.PrintJobCommand) error {
+	// AG-03 handles download + lp execution; AG-02 guarantees resilient consume/reconnect + idempotent processing.
+	log.Printf(
+		"received print command (printer_id=%s job_id=%s event_id=%s trace_id=%s object_url=%s)",
+		command.PrinterID,
+		command.JobID,
+		command.EventID,
+		command.TraceID,
+		command.ObjectURL,
+	)
+
+	return nil
+}
+
+type stdlibConsumeLogger struct{}
+
+func (stdlibConsumeLogger) Info(event string, fields map[string]any) {
+	log.Printf("event=%s level=info fields=%v", event, fields)
+}
+
+func (stdlibConsumeLogger) Warn(event string, fields map[string]any) {
+	log.Printf("event=%s level=warn fields=%v", event, fields)
 }
