@@ -1,7 +1,23 @@
+import { z } from 'zod';
+
 import type { RenderedPdfMetadataDocument } from '../data/schema-contracts.ts';
 
 const DEFAULT_DOWNLOAD_URL_TTL_SECONDS = 120;
 const MAX_DOWNLOAD_URL_TTL_SECONDS = 900;
+
+const createRenderedPdfDownloadUrlInputSchema = z.object({
+  jobId: nonEmptyStringSchema('jobId'),
+  renderedPdf: z.object({
+    bucket: nonEmptyStringSchema('renderedPdf.bucket'),
+    key: nonEmptyStringSchema('renderedPdf.key'),
+  }),
+  ttlSeconds: z.number().optional(),
+});
+
+const signerResponseSchema = z.object({
+  url: nonEmptyStringSchema('signerResponse.url'),
+  expiresAt: isoTimestampSchema('signerResponse.expiresAt').optional(),
+});
 
 export type CreateRenderedPdfDownloadUrlInput = {
   jobId: string;
@@ -58,20 +74,18 @@ export async function createRenderedPdfDownloadUrl(
   input: CreateRenderedPdfDownloadUrlInput,
   deps: CreateRenderedPdfDownloadUrlDependencies
 ): Promise<RenderedPdfDownloadUrl> {
-  assertNonEmpty(input.jobId, 'jobId');
-  assertNonEmpty(input.renderedPdf.bucket, 'renderedPdf.bucket');
-  assertNonEmpty(input.renderedPdf.key, 'renderedPdf.key');
-
-  const ttlSeconds = resolveTtlSeconds(input.ttlSeconds, deps.defaultTtlSeconds);
+  const parsedInput = createRenderedPdfDownloadUrlInputSchema.parse(input);
+  const ttlSeconds = resolveTtlSeconds(parsedInput.ttlSeconds, deps.defaultTtlSeconds);
   const now = deps.now?.() ?? new Date();
 
   try {
-    const signed = await deps.signer.createPresignedGetObjectUrl({
-      bucket: input.renderedPdf.bucket,
-      key: input.renderedPdf.key,
-      expiresInSeconds: ttlSeconds,
-    });
-
+    const signed = signerResponseSchema.parse(
+      await deps.signer.createPresignedGetObjectUrl({
+        bucket: parsedInput.renderedPdf.bucket,
+        key: parsedInput.renderedPdf.key,
+        expiresInSeconds: ttlSeconds,
+      })
+    );
     const fallbackExpiry = new Date(now.getTime() + ttlSeconds * 1_000).toISOString();
     const expiresAt = signed.expiresAt ?? fallbackExpiry;
     const expiryEpochMs = Date.parse(expiresAt);
@@ -80,9 +94,9 @@ export async function createRenderedPdfDownloadUrl(
       deps.onLog?.({
         event: 'rendered_pdf_download_url',
         result: 'expired',
-        jobId: input.jobId,
-        bucket: input.renderedPdf.bucket,
-        key: input.renderedPdf.key,
+        jobId: parsedInput.jobId,
+        bucket: parsedInput.renderedPdf.bucket,
+        key: parsedInput.renderedPdf.key,
         ttlSeconds,
         expiresAt,
       });
@@ -92,9 +106,9 @@ export async function createRenderedPdfDownloadUrl(
     deps.onLog?.({
       event: 'rendered_pdf_download_url',
       result: 'generated',
-      jobId: input.jobId,
-      bucket: input.renderedPdf.bucket,
-      key: input.renderedPdf.key,
+      jobId: parsedInput.jobId,
+      bucket: parsedInput.renderedPdf.bucket,
+      key: parsedInput.renderedPdf.key,
       ttlSeconds,
       expiresAt,
     });
@@ -112,9 +126,9 @@ export async function createRenderedPdfDownloadUrl(
     deps.onLog?.({
       event: 'rendered_pdf_download_url',
       result: 'generation_failed',
-      jobId: input.jobId,
-      bucket: input.renderedPdf.bucket,
-      key: input.renderedPdf.key,
+      jobId: parsedInput.jobId,
+      bucket: parsedInput.renderedPdf.bucket,
+      key: parsedInput.renderedPdf.key,
       ttlSeconds,
       reason: toErrorReason(error),
     });
@@ -125,26 +139,18 @@ export async function createRenderedPdfDownloadUrl(
 
 function resolveTtlSeconds(inputTtlSeconds: number | undefined, defaultTtlSeconds: number | undefined): number {
   const ttlSeconds = inputTtlSeconds ?? defaultTtlSeconds ?? DEFAULT_DOWNLOAD_URL_TTL_SECONDS;
-
-  if (!Number.isInteger(ttlSeconds)) {
-    throw new Error('presigned URL TTL must be an integer number of seconds');
-  }
-
-  if (ttlSeconds <= 0) {
-    throw new Error('presigned URL TTL must be greater than zero seconds');
-  }
-
-  if (ttlSeconds > MAX_DOWNLOAD_URL_TTL_SECONDS) {
-    throw new Error(`presigned URL TTL must be <= ${MAX_DOWNLOAD_URL_TTL_SECONDS} seconds`);
-  }
-
-  return ttlSeconds;
-}
-
-function assertNonEmpty(value: string, fieldName: string): void {
-  if (value.trim() === '') {
-    throw new Error(`${fieldName} must be a non-empty string`);
-  }
+  return z
+    .number()
+    .refine((value) => Number.isInteger(value), {
+      message: 'presigned URL TTL must be an integer number of seconds',
+    })
+    .refine((value) => value > 0, {
+      message: 'presigned URL TTL must be greater than zero seconds',
+    })
+    .refine((value) => value <= MAX_DOWNLOAD_URL_TTL_SECONDS, {
+      message: `presigned URL TTL must be <= ${MAX_DOWNLOAD_URL_TTL_SECONDS} seconds`,
+    })
+    .parse(ttlSeconds);
 }
 
 function toErrorReason(error: unknown): string {
@@ -153,4 +159,16 @@ function toErrorReason(error: unknown): string {
   }
 
   return 'unknown_error';
+}
+
+function nonEmptyStringSchema(fieldName: string): z.ZodType<string> {
+  return z.string().refine((value) => value.trim().length > 0, {
+    message: `${fieldName} must be a non-empty string`,
+  });
+}
+
+function isoTimestampSchema(fieldName: string): z.ZodType<string> {
+  return nonEmptyStringSchema(fieldName).refine((value) => !Number.isNaN(Date.parse(value)), {
+    message: `${fieldName} must be an ISO-8601 timestamp`,
+  });
 }

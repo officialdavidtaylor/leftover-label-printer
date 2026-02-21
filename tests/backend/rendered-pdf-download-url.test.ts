@@ -117,6 +117,30 @@ describe('rendered-pdf-download-url', () => {
     ]);
   });
 
+  it('rejects invalid TTL values before requesting a presigned URL', async () => {
+    const signer = new FakeDownloadUrlSigner({
+      url: 'https://objects.example.com/signed/job-invalid-ttl?sig=abc',
+    });
+
+    await expect(() =>
+      createRenderedPdfDownloadUrl(
+        {
+          jobId: 'job-invalid-ttl',
+          renderedPdf: {
+            bucket: 'leftover-label-printer',
+            key: 'rendered-pdfs/jobs/job-invalid-ttl/printers/printer-1/templates/label-default/rendered.pdf',
+          },
+          ttlSeconds: 1.5,
+        },
+        {
+          signer,
+        }
+      )
+    ).rejects.toThrow('presigned URL TTL must be an integer number of seconds');
+
+    expect(signer.requests).toHaveLength(0);
+  });
+
   it('logs and rethrows signer errors during URL generation', async () => {
     const signer = new FakeDownloadUrlSigner({
       error: new Error('storage signer unavailable'),
