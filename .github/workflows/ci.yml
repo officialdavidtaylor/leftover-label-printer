@@ -26,6 +26,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Go (agent)
+        if: matrix.service == 'agent'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.mod
+
       - name: Lint (${{ matrix.service }})
         run: make lint-${{ matrix.service }}
 

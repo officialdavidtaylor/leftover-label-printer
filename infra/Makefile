@@ -5,7 +5,7 @@ COMPOSE_FILE := docker-compose.yml
 ENV_FILE := .env
 COMPOSE_CMD := docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE)
 
-.PHONY: install lint test build up down reset logs ps
+.PHONY: install lint test build up down reset logs ps validate-security bootstrap-auth
 
 install:
 	@if [ ! -f "$(ENV_FILE)" ]; then \
@@ -15,7 +15,13 @@ install:
 		printf "[%s] install: using existing %s.\n" "$(SERVICE)" "$(ENV_FILE)"; \
 	fi
 
-lint:
+validate-security: install
+	@node --experimental-strip-types ./scripts/validate-emqx-security.ts "$(ENV_FILE)"
+
+bootstrap-auth: install
+	@node --experimental-strip-types ./scripts/bootstrap-emqx-auth.ts "$(ENV_FILE)"
+
+lint: validate-security
 	@if command -v docker >/dev/null 2>&1; then \
 		$(COMPOSE_CMD) config -q; \
 		printf "[%s] lint: docker compose config is valid.\n" "$(SERVICE)"; \
@@ -23,7 +29,7 @@ lint:
 		printf "[%s] lint: docker not installed; skipped compose config validation.\n" "$(SERVICE)"; \
 	fi
 
-test:
+test: validate-security
 	@if command -v docker >/dev/null 2>&1; then \
 		$(COMPOSE_CMD) config -q; \
 		printf "[%s] test: compose syntax validation passed.\n" "$(SERVICE)"; \
@@ -34,8 +40,9 @@ test:
 build:
 	@printf "[%s] build: no build artifact for local dependency stack.\n" "$(SERVICE)"
 
-up: install
+up: validate-security
 	@$(COMPOSE_CMD) up -d --wait
+	@node --experimental-strip-types ./scripts/bootstrap-emqx-auth.ts "$(ENV_FILE)"
 
 down: install
 	@$(COMPOSE_CMD) down --remove-orphans

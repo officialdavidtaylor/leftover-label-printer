@@ -32,7 +32,7 @@ Each service owns a required-key manifest used by runtime/startup validation:
 | Frontend | `VITE_API_BASE_URL`, `VITE_OIDC_ISSUER_URL`, `VITE_OIDC_CLIENT_ID`, `VITE_OIDC_AUDIENCE` | local `.env` copied from `frontend/.env.example`; non-secret config from developer machine | GitHub Actions repository/org variables | deployment environment variables in frontend host |
 | Backend | `MONGO_URI`, `MQTT_USERNAME`, `MQTT_PASSWORD`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, OIDC endpoints/audience | local `.env` with secrets injected from local password manager/manual export | GitHub Actions encrypted secrets and variables | managed secret store in runtime platform (inject as env vars) |
 | Agent | `MQTT_USERNAME`, `MQTT_PASSWORD`, `BACKEND_API_TOKEN` plus printer/runtime keys | device-local `.env` provisioned during bootstrap | CI secrets for test jobs only (never checked in) | per-device secret store / deployment secret injection |
-| Infra | `MONGO_ROOT_PASSWORD`, `EMQX_DASHBOARD_PASSWORD`, `AUTHENTIK_BOOTSTRAP_PASSWORD`, `AUTHENTIK_SECRET_KEY`, `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD` | local `.env` for compose bootstrap (developer-managed) | CI encrypted secrets for infra validation | platform/environment secret manager for deployed infra |
+| Infra | `MONGO_ROOT_PASSWORD`, `EMQX_DASHBOARD_PASSWORD`, `EMQX_REQUIRE_TLS`, `EMQX_ENABLE_PLAIN_MQTT`, `EMQX_BACKEND_MQTT_PASSWORD`, `EMQX_AGENT_MQTT_PASSWORD`, `AUTHENTIK_BOOTSTRAP_PASSWORD`, `AUTHENTIK_SECRET_KEY`, `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD` | local `.env` for compose bootstrap (developer-managed) | CI encrypted secrets for infra validation | platform/environment secret manager for deployed infra |
 
 ## Day-1 setup pattern
 

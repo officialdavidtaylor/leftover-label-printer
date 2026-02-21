@@ -13,6 +13,7 @@ This document defines canonical Mongo collection contracts for the print workflo
 1. `print_jobs`
    - Write model: mutable
    - Required fields: `jobId`, `idempotencyKey`, `state`, `printerId`, `templateId`, `payload`, `traceId`, `acceptedAt`, `createdAt`, `updatedAt`
+   - Optional artifact fields: `renderedPdf.bucket`, `renderedPdf.key`, `renderedPdf.contentType`, `renderedPdf.contentLength`, `renderedPdf.checksumSha256`, `renderedPdf.uploadedAt`, `renderedPdf.eTag`
    - Enum fields: `state` in `pending | processing | dispatched | printed | failed`
 2. `job_events`
    - Write model: append-only
@@ -52,7 +53,16 @@ This document defines canonical Mongo collection contracts for the print workflo
   "traceId": "trace-a9e6141a",
   "acceptedAt": "2026-02-20T15:00:00.000Z",
   "createdAt": "2026-02-20T15:00:00.000Z",
-  "updatedAt": "2026-02-20T15:00:00.000Z"
+  "updatedAt": "2026-02-20T15:00:00.000Z",
+  "renderedPdf": {
+    "bucket": "leftover-label-printer",
+    "key": "rendered-pdfs/jobs/job-7f669920/printers/printer-east-1/templates/label-default/versions/v1/rendered.pdf",
+    "contentType": "application/pdf",
+    "contentLength": 20480,
+    "checksumSha256": "d7d4ea8264f744c76c603f17fe29aebfb7fbc9d8d9f4f0f2ffad89c3f3f0ab40",
+    "uploadedAt": "2026-02-20T15:00:02.000Z",
+    "eTag": "\"adf14e0c5fd6332f8dbf31f95f9f08e9\""
+  }
 }
 ```
 
