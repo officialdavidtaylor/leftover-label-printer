@@ -1,10 +1,12 @@
 package mqttconsume
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"regexp"
 	"strings"
@@ -251,9 +253,19 @@ func ConsumeLoop(ctx context.Context, options Options) error {
 func parsePrintJobCommand(payload []byte, logger Logger) (PrintJobCommand, bool) {
 	var command PrintJobCommand
 
-	if err := json.Unmarshal(payload, &command); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(&command); err != nil {
 		warn(logger, "mqtt_command_decode_failed", map[string]any{
 			"error": err.Error(),
+		})
+		return PrintJobCommand{}, false
+	}
+
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		warn(logger, "mqtt_command_decode_failed", map[string]any{
+			"error": "payload must contain a single JSON object",
 		})
 		return PrintJobCommand{}, false
 	}
