@@ -269,9 +269,33 @@ function createCreateDeps(overrides: {
       },
     },
     store: overrides.store,
+    renderedPdfBucket: 'rendered-pdfs',
+    renderPdf: async () => ({
+      contentType: 'application/pdf',
+      pdfBytes: new Uint8Array([37, 80, 68, 70]),
+    }),
+    uploadRenderedPdf: async (input) => ({
+      bucket: input.bucket,
+      key: `rendered-pdfs/jobs/${input.jobId}/rendered.pdf`,
+      contentType: input.contentType,
+      contentLength: input.pdf.byteLength,
+      checksumSha256: 'checksum-provider',
+      uploadedAt: overrides.nowIso,
+    }),
+    createRenderedPdfDownloadUrl: async (input) => ({
+      url: `https://objects.example.com/signed/${input.jobId}?sig=provider`,
+      expiresAt: '2026-02-20T20:02:00.000Z',
+      ttlSeconds: 120,
+    }),
+    commandPublisher: {
+      async publish() {
+        return;
+      },
+    },
     now: () => new Date(overrides.nowIso),
     createJobId: () => 'job-accepted',
     createEventId: () => 'event-accepted',
+    createCommandEventId: () => 'event-dispatch',
   };
 }
 

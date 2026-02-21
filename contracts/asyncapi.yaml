@@ -34,6 +34,10 @@ channels:
     publish:
       operationId: publishPrintJobCommand
       summary: Backend publishes print command to target printer topic
+      bindings:
+        mqtt:
+          qos: 1
+          retain: false
       message:
         $ref: '#/components/messages/PrintJobCommand'
   printers/{id}/status:
