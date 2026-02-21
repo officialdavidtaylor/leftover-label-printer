@@ -6,16 +6,16 @@ const DEFAULT_DOWNLOAD_URL_TTL_SECONDS = 120;
 const MAX_DOWNLOAD_URL_TTL_SECONDS = 900;
 
 const createRenderedPdfDownloadUrlInputSchema = z.object({
-  jobId: nonEmptyStringSchema('jobId'),
+  jobId: z.string().trim().min(1),
   renderedPdf: z.object({
-    bucket: nonEmptyStringSchema('renderedPdf.bucket'),
-    key: nonEmptyStringSchema('renderedPdf.key'),
+    bucket: z.string().trim().min(1),
+    key: z.string().trim().min(1),
   }),
   ttlSeconds: z.number().optional(),
 });
 
 const signerResponseSchema = z.object({
-  url: nonEmptyStringSchema('signerResponse.url'),
+  url: z.string().trim().min(1),
   expiresAt: isoTimestampSchema('signerResponse.expiresAt').optional(),
 });
 
@@ -161,14 +161,8 @@ function toErrorReason(error: unknown): string {
   return 'unknown_error';
 }
 
-function nonEmptyStringSchema(fieldName: string): z.ZodType<string> {
-  return z.string().refine((value) => value.trim().length > 0, {
-    message: `${fieldName} must be a non-empty string`,
-  });
-}
-
 function isoTimestampSchema(fieldName: string): z.ZodType<string> {
-  return nonEmptyStringSchema(fieldName).refine((value) => !Number.isNaN(Date.parse(value)), {
+  return z.string().trim().min(1).refine((value) => !Number.isNaN(Date.parse(value)), {
     message: `${fieldName} must be an ISO-8601 timestamp`,
   });
 }
