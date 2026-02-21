@@ -2,6 +2,8 @@
 
 Containerized Raspberry Pi edge print agent service boundary.
 
+Agent runtime code is Go. New runtime features in `agent/` should be implemented and tested in Go.
+
 ## Local commands
 
 - `make install`
@@ -21,6 +23,8 @@ Containerized Raspberry Pi edge print agent service boundary.
 
 - `CUPS_PRINTER_NAME` selects the CUPS destination passed to `lp -d`.
 - `LP_COMMAND_PATH` controls which `lp` binary is validated and executed.
+- `MQTT_BROKER_URL` selects the broker endpoint the consume loop connects to.
+- `MQTT_CLIENT_ID`, `MQTT_USERNAME`, and `MQTT_PASSWORD` are used for broker auth and identity.
 - `AGENT_VALIDATE_ONLY=true` runs startup validation then exits.
 
 ## Raspberry Pi host driver install (DYMO 450)

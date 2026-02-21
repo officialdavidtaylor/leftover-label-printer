@@ -20,6 +20,10 @@ type Config struct {
 	CUPSPrinterName string
 	PollInterval    time.Duration
 	LPCommandPath   string
+	MQTTBrokerURL   string
+	MQTTClientID    string
+	MQTTUsername    string
+	MQTTPassword    string
 	ValidateOnly    bool
 }
 
@@ -61,6 +65,30 @@ func LoadFromEnv() (Config, error) {
 		lpCommandPath = defaultLPCommandPath
 	}
 	cfg.LPCommandPath = lpCommandPath
+
+	mqttBrokerURL, err := requiredEnv("MQTT_BROKER_URL")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.MQTTBrokerURL = mqttBrokerURL
+
+	mqttClientID, err := requiredEnv("MQTT_CLIENT_ID")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.MQTTClientID = mqttClientID
+
+	mqttUsername, err := requiredEnv("MQTT_USERNAME")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.MQTTUsername = mqttUsername
+
+	mqttPassword, err := requiredEnv("MQTT_PASSWORD")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.MQTTPassword = mqttPassword
 
 	validateOnlyRaw := strings.TrimSpace(os.Getenv("AGENT_VALIDATE_ONLY"))
 	if validateOnlyRaw == "" {
