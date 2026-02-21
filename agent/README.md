@@ -2,6 +2,10 @@
 
 Raspberry Pi edge print agent service boundary.
 
+Implementation language:
+
+1. Agent runtime code is Go. New runtime features in `agent/` should be implemented and tested in Go.
+
 Use local commands:
 
 - `make install`
