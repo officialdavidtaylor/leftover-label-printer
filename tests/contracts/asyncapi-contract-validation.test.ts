@@ -16,6 +16,7 @@ describe('asyncapi-contract-validation', () => {
     expect(specText).toContain('version: 0.2.0');
     expect(specText).toContain('printers/{id}/jobs:');
     expect(specText).toContain('printers/{id}/status:');
+    expect(specText).toContain('qos: 1');
   });
 
   it('requires command/outcome payload fields and outcome enums', () => {

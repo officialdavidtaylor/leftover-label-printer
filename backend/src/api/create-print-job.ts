@@ -11,6 +11,7 @@ import type {
   RenderedPdfMetadataDocument,
 } from '../data/schema-contracts.ts';
 import { DuplicateIdempotencyKeyError } from '../print-jobs/idempotent-submission.ts';
+import { publishPrintJobCommand } from '../print-jobs/print-job-command-publisher.ts';
 
 const createPrintJobRequestSchema = z.object({
   idempotencyKey: z.string().trim().min(1),
@@ -75,12 +76,70 @@ export type SubmissionLog = {
   printerId?: string;
 };
 
+export type RenderPdfForPrintJobInput = {
+  templateId: string;
+  templateVersion: string;
+  payload: Record<string, unknown>;
+};
+
+export type RenderPdfForPrintJobResult = {
+  contentType: string;
+  pdfBytes: Uint8Array;
+};
+
+export type UploadRenderedPdfForPrintJobInput = {
+  jobId: string;
+  printerId: string;
+  templateId: string;
+  templateVersion: string;
+  bucket: string;
+  pdf: Uint8Array;
+  contentType: string;
+};
+
+export type CreateRenderedPdfDownloadUrlForPrintJobInput = {
+  jobId: string;
+  renderedPdf: Pick<RenderedPdfMetadataDocument, 'bucket' | 'key'>;
+};
+
+export type CreateRenderedPdfDownloadUrlForPrintJobResult = {
+  url: string;
+  expiresAt: string;
+  ttlSeconds: number;
+};
+
+export interface DispatchPrintJobCommandPublisher {
+  publish(input: {
+    topic: string;
+    qos: 1;
+    payload: {
+      schemaVersion: string;
+      type: 'print_job_dispatch';
+      eventId: string;
+      traceId: string;
+      jobId: string;
+      printerId: string;
+      objectUrl: string;
+      issuedAt: string;
+    };
+  }): Promise<void>;
+}
+
 export type CreatePrintJobDependencies = {
   authVerifier: CreatePrintJobAuthVerifier;
   store: CreatePrintJobStore;
+  renderedPdfBucket: string;
+  renderPdf: (input: RenderPdfForPrintJobInput) => Promise<RenderPdfForPrintJobResult>;
+  uploadRenderedPdf: (input: UploadRenderedPdfForPrintJobInput) => Promise<RenderedPdfMetadataDocument>;
+  createRenderedPdfDownloadUrl: (
+    input: CreateRenderedPdfDownloadUrlForPrintJobInput
+  ) => Promise<CreateRenderedPdfDownloadUrlForPrintJobResult>;
+  commandPublisher: DispatchPrintJobCommandPublisher;
   now?: () => Date;
   createJobId?: () => string;
   createEventId?: () => string;
+  createCommandEventId?: () => string;
+  defaultTemplateVersion?: string;
   createTraceId?: () => string;
   onLog?: (entry: SubmissionLog) => void;
 };
@@ -134,10 +193,11 @@ export async function handleCreatePrintJob(
   }
 
   const payload = bodyResult.data;
+  const templateVersion = payload.templateVersion ?? deps.defaultTemplateVersion ?? 'v1';
   // Validate referenced resources before accepting the submission into job history.
   const [printerFound, templateFound] = await Promise.all([
     deps.store.printerExists(payload.printerId),
-    deps.store.templateExists(payload.templateId, payload.templateVersion),
+    deps.store.templateExists(payload.templateId, templateVersion),
   ]);
 
   if (!printerFound || !templateFound) {
@@ -207,6 +267,15 @@ export async function handleCreatePrintJob(
 
     throw error;
   }
+
+  await dispatchAcceptedPrintJob(
+    {
+      job,
+      templateVersion,
+      acceptedAt,
+    },
+    deps
+  );
 
   deps.onLog?.({
     event: 'print_job_submission',
@@ -283,6 +352,54 @@ function toAcceptedResponse(job: PersistedPrintJob): PrintJobAcceptedResponse {
     acceptedAt: job.acceptedAt,
     traceId: job.traceId,
   };
+}
+
+async function dispatchAcceptedPrintJob(
+  input: {
+    job: PersistedPrintJob;
+    templateVersion: string;
+    acceptedAt: string;
+  },
+  deps: CreatePrintJobDependencies
+): Promise<void> {
+  const rendered = await deps.renderPdf({
+    templateId: input.job.templateId,
+    templateVersion: input.templateVersion,
+    payload: input.job.payload,
+  });
+
+  const renderedPdf = await deps.uploadRenderedPdf({
+    jobId: input.job.jobId,
+    printerId: input.job.printerId,
+    templateId: input.job.templateId,
+    templateVersion: input.templateVersion,
+    bucket: deps.renderedPdfBucket,
+    pdf: rendered.pdfBytes,
+    contentType: rendered.contentType,
+  });
+
+  const downloadUrl = await deps.createRenderedPdfDownloadUrl({
+    jobId: input.job.jobId,
+    renderedPdf: {
+      bucket: renderedPdf.bucket,
+      key: renderedPdf.key,
+    },
+  });
+
+  await publishPrintJobCommand(
+    {
+      jobId: input.job.jobId,
+      printerId: input.job.printerId,
+      traceId: input.job.traceId,
+      objectUrl: downloadUrl.url,
+      issuedAt: input.acceptedAt,
+    },
+    {
+      publisher: deps.commandPublisher,
+      createEventId: deps.createCommandEventId,
+      now: deps.now,
+    }
+  );
 }
 
 function buildValidationError(traceId?: string): ErrorResponse {
