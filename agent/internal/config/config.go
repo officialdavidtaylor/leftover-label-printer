@@ -11,20 +11,28 @@ import (
 const (
 	defaultPollIntervalSeconds = 10
 	defaultLPCommandPath       = "/usr/bin/lp"
+	defaultRetryMaxAttempts    = 5
+	defaultRetryInitialDelayS  = 5
+	defaultRetryMaxDelayS      = 60
+	defaultRetryMultiplier     = 2.0
 )
 
 // Config contains runtime values needed to initialize the edge agent process.
 type Config struct {
-	PrinterID       string
-	SpoolDir        string
-	CUPSPrinterName string
-	PollInterval    time.Duration
-	LPCommandPath   string
-	MQTTBrokerURL   string
-	MQTTClientID    string
-	MQTTUsername    string
-	MQTTPassword    string
-	ValidateOnly    bool
+	PrinterID         string
+	SpoolDir          string
+	CUPSPrinterName   string
+	PollInterval      time.Duration
+	LPCommandPath     string
+	MQTTBrokerURL     string
+	MQTTClientID      string
+	MQTTUsername      string
+	MQTTPassword      string
+	RetryMaxAttempts  int
+	RetryInitialDelay time.Duration
+	RetryMaxDelay     time.Duration
+	RetryMultiplier   float64
+	ValidateOnly      bool
 }
 
 func LoadFromEnv() (Config, error) {
@@ -89,6 +97,58 @@ func LoadFromEnv() (Config, error) {
 		return Config{}, err
 	}
 	cfg.MQTTPassword = mqttPassword
+
+	retryMaxAttemptsRaw := strings.TrimSpace(os.Getenv("AGENT_RETRY_MAX_ATTEMPTS"))
+	if retryMaxAttemptsRaw == "" {
+		cfg.RetryMaxAttempts = defaultRetryMaxAttempts
+	} else {
+		retryMaxAttempts, parseErr := strconv.Atoi(retryMaxAttemptsRaw)
+		if parseErr != nil || retryMaxAttempts < 1 {
+			return Config{}, fmt.Errorf("AGENT_RETRY_MAX_ATTEMPTS must be a positive integer: %q", retryMaxAttemptsRaw)
+		}
+		cfg.RetryMaxAttempts = retryMaxAttempts
+	}
+
+	retryInitialDelayRaw := strings.TrimSpace(os.Getenv("AGENT_RETRY_INITIAL_DELAY_SECONDS"))
+	if retryInitialDelayRaw == "" {
+		cfg.RetryInitialDelay = defaultRetryInitialDelayS * time.Second
+	} else {
+		retryInitialDelaySeconds, parseErr := strconv.Atoi(retryInitialDelayRaw)
+		if parseErr != nil || retryInitialDelaySeconds < 1 {
+			return Config{}, fmt.Errorf("AGENT_RETRY_INITIAL_DELAY_SECONDS must be a positive integer: %q", retryInitialDelayRaw)
+		}
+		cfg.RetryInitialDelay = time.Duration(retryInitialDelaySeconds) * time.Second
+	}
+
+	retryMaxDelayRaw := strings.TrimSpace(os.Getenv("AGENT_RETRY_MAX_DELAY_SECONDS"))
+	if retryMaxDelayRaw == "" {
+		cfg.RetryMaxDelay = defaultRetryMaxDelayS * time.Second
+	} else {
+		retryMaxDelaySeconds, parseErr := strconv.Atoi(retryMaxDelayRaw)
+		if parseErr != nil || retryMaxDelaySeconds < 1 {
+			return Config{}, fmt.Errorf("AGENT_RETRY_MAX_DELAY_SECONDS must be a positive integer: %q", retryMaxDelayRaw)
+		}
+		cfg.RetryMaxDelay = time.Duration(retryMaxDelaySeconds) * time.Second
+	}
+
+	if cfg.RetryMaxDelay < cfg.RetryInitialDelay {
+		return Config{}, fmt.Errorf(
+			"AGENT_RETRY_MAX_DELAY_SECONDS must be greater than or equal to AGENT_RETRY_INITIAL_DELAY_SECONDS (%d < %d)",
+			int(cfg.RetryMaxDelay/time.Second),
+			int(cfg.RetryInitialDelay/time.Second),
+		)
+	}
+
+	retryMultiplierRaw := strings.TrimSpace(os.Getenv("AGENT_RETRY_MULTIPLIER"))
+	if retryMultiplierRaw == "" {
+		cfg.RetryMultiplier = defaultRetryMultiplier
+	} else {
+		retryMultiplier, parseErr := strconv.ParseFloat(retryMultiplierRaw, 64)
+		if parseErr != nil || retryMultiplier < 1 {
+			return Config{}, fmt.Errorf("AGENT_RETRY_MULTIPLIER must be a number greater than or equal to 1: %q", retryMultiplierRaw)
+		}
+		cfg.RetryMultiplier = retryMultiplier
+	}
 
 	validateOnlyRaw := strings.TrimSpace(os.Getenv("AGENT_VALIDATE_ONLY"))
 	if validateOnlyRaw == "" {
