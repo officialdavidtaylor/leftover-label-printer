@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/config"
+	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/jobexec"
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/mqttclient"
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/mqttconsume"
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/print"
@@ -35,6 +36,15 @@ func main() {
 		return
 	}
 
+	commandExecutor, err := jobexec.NewExecutor(jobexec.Config{
+		SpoolDir:        cfg.SpoolDir,
+		CUPSPrinterName: cfg.CUPSPrinterName,
+		LPCommandPath:   cfg.LPCommandPath,
+	})
+	if err != nil {
+		log.Fatalf("build print command executor: %v", err)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -54,7 +64,7 @@ func main() {
 		PrinterID: cfg.PrinterID,
 		Client:    client,
 		Logger:    stdlibConsumeLogger{},
-		OnCommand: handlePrintJobCommand,
+		OnCommand: buildPrintJobCommandHandler(commandExecutor),
 	})
 	if err != nil {
 		log.Fatalf("consume loop failed: %v", err)
@@ -63,18 +73,35 @@ func main() {
 	log.Print("shutdown signal received")
 }
 
-func handlePrintJobCommand(_ context.Context, command mqttconsume.PrintJobCommand) error {
-	// AG-03 handles download + lp execution; AG-02 guarantees resilient consume/reconnect + idempotent processing.
-	log.Printf(
-		"received print command (printer_id=%s job_id=%s event_id=%s trace_id=%s object_url=%s)",
-		command.PrinterID,
-		command.JobID,
-		command.EventID,
-		command.TraceID,
-		command.ObjectURL,
-	)
+type printCommandExecutor interface {
+	Execute(ctx context.Context, command jobexec.Command) jobexec.Result
+}
 
-	return nil
+func buildPrintJobCommandHandler(executor printCommandExecutor) func(context.Context, mqttconsume.PrintJobCommand) error {
+	return func(ctx context.Context, command mqttconsume.PrintJobCommand) error {
+		result := executor.Execute(ctx, jobexec.Command{
+			EventID:   command.EventID,
+			TraceID:   command.TraceID,
+			JobID:     command.JobID,
+			PrinterID: command.PrinterID,
+			ObjectURL: command.ObjectURL,
+		})
+
+		log.Printf(
+			"print command handled (printer_id=%s job_id=%s event_id=%s trace_id=%s outcome=%s error_code=%s error_message=%q lp_output=%q)",
+			command.PrinterID,
+			command.JobID,
+			command.EventID,
+			command.TraceID,
+			result.Outcome,
+			result.ErrorCode,
+			result.ErrorMessage,
+			result.LPOutput,
+		)
+
+		// AG-03 captures print success/failure for future status emission; returning nil avoids duplicate processing.
+		return nil
+	}
 }
 
 type stdlibConsumeLogger struct{}

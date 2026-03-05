@@ -39,6 +39,9 @@ Notes:
 
 - This is a host-level setup step (not inside the agent container).
 - The script configures a CUPS queue named `dymo` by default (override with `QUEUE_NAME=<name>`).
+- If you override `QUEUE_NAME` during install, set runtime `CUPS_PRINTER_NAME` to the same queue name.
+- The agent runtime itself does not require `dymo`; set `CUPS_PRINTER_NAME` to any valid CUPS queue.
+- Runtime defaults in this repo target MVP hardware (`dymo`); isolated unit tests may use names like `mockPrinter`.
 - If your distro does not provide `printer-driver-dymo`, the script falls back to `printer-driver-all`.
 
 ## Interface contracts
