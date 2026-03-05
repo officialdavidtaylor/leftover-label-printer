@@ -7,7 +7,7 @@
     "env:test": "vitest run tests/env/validate-env.test.ts tests/infra/validate-emqx-security.test.ts",
     "contracts:test": "vitest run tests/contracts",
     "backend:test": "vitest run tests/backend",
-    "provider-contract:test": "vitest run tests/backend/provider-contract-harness.test.ts tests/backend/provider-openapi-contract.test.ts"
+    "provider-contract:test": "vitest run tests/backend/provider-contract-harness.test.ts tests/backend/provider-openapi-contract.test.ts tests/backend/publisher-asyncapi-contract.test.ts"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "^12.1.0",
