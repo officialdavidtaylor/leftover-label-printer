@@ -2,6 +2,12 @@
 
 React PWA service boundary.
 
+Implemented in this phase:
+
+- OIDC Authorization Code + PKCE session flow core (`frontend/src/auth`)
+- Protected API client bearer token injection + unauthorized handling (`frontend/src/api`)
+- Frontend auth/session tests (`tests/frontend`)
+
 Use local commands:
 
 - `make install`
