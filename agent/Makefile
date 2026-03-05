@@ -13,7 +13,7 @@ DOCKERFILE := Dockerfile
 
 AGENT_PRINTER_ID ?= printer-01
 AGENT_SPOOL_DIR ?= /var/lib/leftover-agent/spool
-CUPS_PRINTER_NAME ?= dymo
+CUPS_PRINTER_NAME ?= mockPrinter
 LP_COMMAND_PATH ?= /usr/bin/lp
 
 .PHONY: install lint test build container-build validate-print-path clean

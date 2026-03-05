@@ -74,7 +74,7 @@ func TestLoadFromEnvWithOverrides(t *testing.T) {
 func TestLoadFromEnvMissingRequired(t *testing.T) {
 	t.Setenv("AGENT_PRINTER_ID", "")
 	t.Setenv("AGENT_SPOOL_DIR", "/var/lib/leftover-agent/spool")
-	t.Setenv("CUPS_PRINTER_NAME", "dymo")
+	t.Setenv("CUPS_PRINTER_NAME", "mockPrinter")
 
 	_, err := LoadFromEnv()
 	if err == nil {
@@ -132,7 +132,7 @@ func setRequiredEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("AGENT_PRINTER_ID", "printer-01")
 	t.Setenv("AGENT_SPOOL_DIR", "/var/lib/leftover-agent/spool")
-	t.Setenv("CUPS_PRINTER_NAME", "dymo")
+	t.Setenv("CUPS_PRINTER_NAME", "mockPrinter")
 	t.Setenv("MQTT_BROKER_URL", "mqtt://localhost:1883")
 	t.Setenv("MQTT_CLIENT_ID", "printer-01")
 	t.Setenv("MQTT_USERNAME", "printer-01")

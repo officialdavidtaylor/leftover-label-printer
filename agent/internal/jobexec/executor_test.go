@@ -22,7 +22,7 @@ func TestExecutePrintsDownloadedPDF(t *testing.T) {
 
 	executor, err := NewExecutor(Config{
 		SpoolDir:        t.TempDir(),
-		CUPSPrinterName: "dymo",
+		CUPSPrinterName: "mockPrinter",
 		LPCommandPath:   "/usr/bin/lp",
 		HTTPClient: fakeHTTPClient{
 			do: func(request *http.Request) (*http.Response, error) {
@@ -50,7 +50,7 @@ func TestExecutePrintsDownloadedPDF(t *testing.T) {
 				}
 				invokedBody = body
 
-				return []byte("request id is dymo-42"), nil
+				return []byte("request id is mockPrinter-42"), nil
 			},
 		},
 	})
@@ -80,7 +80,7 @@ func TestExecutePrintsDownloadedPDF(t *testing.T) {
 		t.Fatalf("unexpected spooled PDF body: %q", string(invokedBody))
 	}
 
-	if result.LPOutput != "request id is dymo-42" {
+	if result.LPOutput != "request id is mockPrinter-42" {
 		t.Fatalf("unexpected lp output: %q", result.LPOutput)
 	}
 }
@@ -88,7 +88,7 @@ func TestExecutePrintsDownloadedPDF(t *testing.T) {
 func TestExecuteReturnsDownloadFailureForNon200Response(t *testing.T) {
 	executor := mustExecutor(t, Config{
 		SpoolDir:        t.TempDir(),
-		CUPSPrinterName: "dymo",
+		CUPSPrinterName: "mockPrinter",
 		LPCommandPath:   "/usr/bin/lp",
 		HTTPClient: fakeHTTPClient{
 			do: func(*http.Request) (*http.Response, error) {
@@ -111,7 +111,7 @@ func TestExecuteReturnsDownloadFailureForNon200Response(t *testing.T) {
 func TestExecuteRejectsNonPDFDownloads(t *testing.T) {
 	executor := mustExecutor(t, Config{
 		SpoolDir:        t.TempDir(),
-		CUPSPrinterName: "dymo",
+		CUPSPrinterName: "mockPrinter",
 		LPCommandPath:   "/usr/bin/lp",
 		HTTPClient: fakeHTTPClient{
 			do: func(*http.Request) (*http.Response, error) {
@@ -136,7 +136,7 @@ func TestExecuteReturnsPrintFailureWhenLPFails(t *testing.T) {
 
 	executor := mustExecutor(t, Config{
 		SpoolDir:        t.TempDir(),
-		CUPSPrinterName: "dymo",
+		CUPSPrinterName: "mockPrinter",
 		LPCommandPath:   "/usr/bin/lp",
 		HTTPClient: fakeHTTPClient{
 			do: func(*http.Request) (*http.Response, error) {
@@ -172,7 +172,7 @@ func TestExecuteReturnsPrintFailureWhenLPFails(t *testing.T) {
 func TestExecuteRejectsInvalidURLSchemes(t *testing.T) {
 	executor := mustExecutor(t, Config{
 		SpoolDir:        t.TempDir(),
-		CUPSPrinterName: "dymo",
+		CUPSPrinterName: "mockPrinter",
 		LPCommandPath:   "/usr/bin/lp",
 	})
 

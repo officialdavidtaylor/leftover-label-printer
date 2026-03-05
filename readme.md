@@ -12,7 +12,8 @@
 - Dymo LabelWriter 450 (USB thermal label printer)
   - Linux CUPS and the thermal label printer driver must be installed on the Pi.
   - Host-side installer script: `scripts/agent/install-dymo-450-driver.sh`
-  - The printer name must be `dymo` for this app to function as expected.
+  - `CUPS_PRINTER_NAME` is configurable. For local/test examples in this repo we use `mockPrinter`.
+  - The DYMO installer script defaults to queue name `dymo` (override with `QUEUE_NAME=<name>`).
 
 ## Monorepo layout
 

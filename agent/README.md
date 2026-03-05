@@ -39,6 +39,7 @@ Notes:
 
 - This is a host-level setup step (not inside the agent container).
 - The script configures a CUPS queue named `dymo` by default (override with `QUEUE_NAME=<name>`).
+- The agent runtime itself does not require `dymo`; set `CUPS_PRINTER_NAME` to any valid CUPS queue (examples below use `mockPrinter`).
 - If your distro does not provide `printer-driver-dymo`, the script falls back to `printer-driver-all`.
 
 ## Interface contracts
@@ -72,7 +73,7 @@ docker build \
 On the Raspberry Pi host, validate CUPS print command wiring before enabling queue processing:
 
 ```bash
-make validate-print-path LP_COMMAND_PATH=/usr/bin/lp CUPS_PRINTER_NAME=dymo
+make validate-print-path LP_COMMAND_PATH=/usr/bin/lp CUPS_PRINTER_NAME=mockPrinter
 ```
 
 For a containerized check against host CUPS socket:
@@ -82,7 +83,7 @@ docker run --rm \
   --network host \
   -e AGENT_PRINTER_ID=printer-01 \
   -e AGENT_SPOOL_DIR=/var/lib/leftover-agent/spool \
-  -e CUPS_PRINTER_NAME=dymo \
+  -e CUPS_PRINTER_NAME=mockPrinter \
   -e LP_COMMAND_PATH=/usr/bin/lp \
   -e AGENT_VALIDATE_ONLY=true \
   -v /var/run/cups/cups.sock:/var/run/cups/cups.sock \
