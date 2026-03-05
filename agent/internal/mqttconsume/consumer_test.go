@@ -24,6 +24,21 @@ func TestPrinterJobTopic(t *testing.T) {
 	}
 }
 
+func TestPrinterStatusTopic(t *testing.T) {
+	topic, err := PrinterStatusTopic("printer-01")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if topic != "printers/printer-01/status" {
+		t.Fatalf("unexpected topic: %s", topic)
+	}
+
+	if _, err := PrinterStatusTopic("   "); err == nil {
+		t.Fatal("expected error for empty printerID")
+	}
+}
+
 func TestConsumeLoopSubscribesAndProcessesMessages(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -327,6 +342,7 @@ func (client fakeClient) Connect(ctx context.Context) (Session, error) {
 
 type fakeSession struct {
 	subscribe         func(context.Context, string, func(context.Context, []byte) error) error
+	publish           func(context.Context, string, []byte) error
 	waitForDisconnect func(context.Context) error
 	close             func() error
 }
@@ -341,6 +357,14 @@ func (session fakeSession) Subscribe(
 
 func (session fakeSession) WaitForDisconnect(ctx context.Context) error {
 	return session.waitForDisconnect(ctx)
+}
+
+func (session fakeSession) Publish(ctx context.Context, topic string, payload []byte) error {
+	if session.publish == nil {
+		return nil
+	}
+
+	return session.publish(ctx, topic, payload)
 }
 
 func (session fakeSession) Close() error {
