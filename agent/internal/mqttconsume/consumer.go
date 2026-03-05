@@ -36,6 +36,7 @@ type PrintJobCommand struct {
 // Session represents a connected MQTT session.
 type Session interface {
 	Subscribe(ctx context.Context, topic string, handler func(context.Context, []byte) error) error
+	Publish(ctx context.Context, topic string, payload []byte) error
 	WaitForDisconnect(ctx context.Context) error
 	Close() error
 }
@@ -78,6 +79,17 @@ func PrinterJobTopic(printerID string) (string, error) {
 	}
 
 	return fmt.Sprintf("printers/%s/jobs", normalizedPrinterID), nil
+}
+
+// PrinterStatusTopic returns the edge status topic for one printer.
+func PrinterStatusTopic(printerID string) (string, error) {
+	normalizedPrinterID := strings.TrimSpace(printerID)
+
+	if normalizedPrinterID == "" {
+		return "", errors.New("printerID must be a non-empty string")
+	}
+
+	return fmt.Sprintf("printers/%s/status", normalizedPrinterID), nil
 }
 
 // ConsumeLoop connects to the broker, subscribes to the printer command topic, and keeps reconnecting with backoff.

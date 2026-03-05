@@ -116,6 +116,11 @@ func (session *pahoSession) Subscribe(
 	return waitForToken(ctx, subscribeToken)
 }
 
+func (session *pahoSession) Publish(ctx context.Context, topic string, payload []byte) error {
+	publishToken := session.client.Publish(topic, 1, false, payload)
+	return waitForToken(ctx, publishToken)
+}
+
 func (session *pahoSession) WaitForDisconnect(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
