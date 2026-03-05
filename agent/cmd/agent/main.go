@@ -6,9 +6,11 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/config"
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/jobexec"
+	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/jobqueue"
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/mqttclient"
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/mqttconsume"
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/print"
@@ -25,10 +27,15 @@ func main() {
 	}
 
 	log.Printf(
-		"agent startup checks passed (printer_id=%s cups_printer=%s lp_command_path=%s)",
+		"agent startup checks passed (printer_id=%s cups_printer=%s lp_command_path=%s spool_dir=%s retry_max_attempts=%d retry_initial_delay=%s retry_max_delay=%s retry_multiplier=%.2f)",
 		cfg.PrinterID,
 		cfg.CUPSPrinterName,
 		cfg.LPCommandPath,
+		cfg.SpoolDir,
+		cfg.RetryMaxAttempts,
+		cfg.RetryInitialDelay,
+		cfg.RetryMaxDelay,
+		cfg.RetryMultiplier,
 	)
 
 	if cfg.ValidateOnly {
@@ -45,8 +52,35 @@ func main() {
 		log.Fatalf("build print command executor: %v", err)
 	}
 
+	queueStore, err := jobqueue.NewStore(cfg.SpoolDir)
+	if err != nil {
+		log.Fatalf("build durable queue store: %v", err)
+	}
+
+	queueProcessor, err := jobqueue.NewProcessor(jobqueue.ProcessorConfig{
+		Store:    queueStore,
+		Executor: commandExecutor,
+		RetryPolicy: jobqueue.RetryPolicy{
+			MaxAttempts:  cfg.RetryMaxAttempts,
+			InitialDelay: cfg.RetryInitialDelay,
+			MaxDelay:     cfg.RetryMaxDelay,
+			Multiplier:   cfg.RetryMultiplier,
+		},
+		Logger: stdlibConsumeLogger{},
+	})
+	if err != nil {
+		log.Fatalf("build queue processor: %v", err)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	queueWake := make(chan struct{}, 1)
+	queueWorkerErr := make(chan error, 1)
+	go func() {
+		queueWorkerErr <- jobqueue.RunLoop(ctx, queueProcessor, cfg.PollInterval, queueWake)
+		stop()
+	}()
 
 	client, err := mqttclient.NewPahoClient(mqttclient.Config{
 		BrokerURL: cfg.MQTTBrokerURL,
@@ -64,8 +98,14 @@ func main() {
 		PrinterID: cfg.PrinterID,
 		Client:    client,
 		Logger:    stdlibConsumeLogger{},
-		OnCommand: buildPrintJobCommandHandler(commandExecutor),
+		OnCommand: buildPrintJobCommandHandler(queueStore, queueWake, stdlibConsumeLogger{}, time.Now),
 	})
+
+	stop()
+	workerErr := <-queueWorkerErr
+	if workerErr != nil {
+		log.Fatalf("queue processor failed: %v", workerErr)
+	}
 	if err != nil {
 		log.Fatalf("consume loop failed: %v", err)
 	}
@@ -73,35 +113,68 @@ func main() {
 	log.Print("shutdown signal received")
 }
 
-type printCommandExecutor interface {
-	Execute(ctx context.Context, command jobexec.Command) jobexec.Result
+type durableQueue interface {
+	Enqueue(command jobexec.Command, now time.Time) (jobqueue.QueuedJob, bool, error)
 }
 
-func buildPrintJobCommandHandler(executor printCommandExecutor) func(context.Context, mqttconsume.PrintJobCommand) error {
-	return func(ctx context.Context, command mqttconsume.PrintJobCommand) error {
-		result := executor.Execute(ctx, jobexec.Command{
+type queueLogger interface {
+	Info(event string, fields map[string]any)
+	Warn(event string, fields map[string]any)
+}
+
+func buildPrintJobCommandHandler(
+	queue durableQueue,
+	queueWake chan<- struct{},
+	logger queueLogger,
+	now func() time.Time,
+) func(context.Context, mqttconsume.PrintJobCommand) error {
+	if now == nil {
+		now = time.Now
+	}
+
+	return func(_ context.Context, command mqttconsume.PrintJobCommand) error {
+		_, created, err := queue.Enqueue(jobexec.Command{
 			EventID:   command.EventID,
 			TraceID:   command.TraceID,
 			JobID:     command.JobID,
 			PrinterID: command.PrinterID,
 			ObjectURL: command.ObjectURL,
+		}, now())
+		if err != nil {
+			return err
+		}
+
+		if created {
+			select {
+			case queueWake <- struct{}{}:
+			default:
+			}
+
+			logQueueInfo(logger, "queue_job_enqueued", map[string]any{
+				"printerId": command.PrinterID,
+				"jobId":     command.JobID,
+				"eventId":   command.EventID,
+				"traceId":   command.TraceID,
+			})
+			return nil
+		}
+
+		logQueueInfo(logger, "queue_job_duplicate_ignored", map[string]any{
+			"printerId": command.PrinterID,
+			"jobId":     command.JobID,
+			"eventId":   command.EventID,
+			"traceId":   command.TraceID,
 		})
-
-		log.Printf(
-			"print command handled (printer_id=%s job_id=%s event_id=%s trace_id=%s outcome=%s error_code=%s error_message=%q lp_output=%q)",
-			command.PrinterID,
-			command.JobID,
-			command.EventID,
-			command.TraceID,
-			result.Outcome,
-			result.ErrorCode,
-			result.ErrorMessage,
-			result.LPOutput,
-		)
-
-		// AG-03 captures print success/failure for future status emission; returning nil avoids duplicate processing.
 		return nil
 	}
+}
+
+func logQueueInfo(logger queueLogger, event string, fields map[string]any) {
+	if logger == nil {
+		return
+	}
+
+	logger.Info(event, fields)
 }
 
 type stdlibConsumeLogger struct{}
