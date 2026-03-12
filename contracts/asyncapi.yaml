@@ -1,7 +1,7 @@
 asyncapi: 2.6.0
 info:
   title: Leftover Label Printer MQTT Contract
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Contract for backend command dispatch and edge status events.
 defaultContentType: application/json
@@ -133,7 +133,8 @@ components:
         type:
           type: string
           enum:
-            - job_outcome
+            - printed
+            - failed
         eventId:
           type: string
         traceId:

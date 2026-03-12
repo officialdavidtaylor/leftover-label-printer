@@ -3,12 +3,14 @@ package jobqueue
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/jobexec"
+	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/mqttstatus"
 )
 
 func TestStoreEnqueuePersistsAcrossRestart(t *testing.T) {
@@ -328,6 +330,202 @@ func TestProcessorDeletesPrintedJobEvenIfShutdownArrivesAfterExecute(t *testing.
 	}
 }
 
+func TestProcessorQueuesAndPublishesPrintedOutcome(t *testing.T) {
+	spoolDir := t.TempDir()
+	store := mustStore(t, spoolDir)
+	outbox, err := mqttstatus.NewFileOutbox(spoolDir)
+	if err != nil {
+		t.Fatalf("new outbox: %v", err)
+	}
+
+	now := time.Date(2026, 3, 5, 12, 0, 0, 0, time.UTC)
+	_, _, err = store.Enqueue(buildCommand(), now)
+	if err != nil {
+		t.Fatalf("enqueue returned error: %v", err)
+	}
+
+	publisher := &fakeOutcomePublisher{
+		payload: mqttstatus.PrintJobOutcomePayload{
+			SchemaVersion: "1.0.0",
+			Type:          "printed",
+			EventID:       "outcome-printed-1",
+			TraceID:       "trace-123",
+			JobID:         "job-123",
+			PrinterID:     "printer-01",
+			Outcome:       "printed",
+			OccurredAt:    "2026-03-05T12:00:00Z",
+		},
+	}
+
+	processor, err := NewProcessor(ProcessorConfig{
+		Store: store,
+		Executor: fakeExecutor{execute: func(context.Context, jobexec.Command) jobexec.Result {
+			return jobexec.Result{Outcome: jobexec.OutcomePrinted, LPOutput: "request id is printer-01-42"}
+		}},
+		RetryPolicy:      RetryPolicy{MaxAttempts: 3, InitialDelay: time.Second, MaxDelay: time.Second, Multiplier: 2},
+		Now:              func() time.Time { return now },
+		OutcomePublisher: publisher,
+		OutcomeOutbox:    outbox,
+	})
+	if err != nil {
+		t.Fatalf("new processor returned error: %v", err)
+	}
+
+	processed, err := processor.ProcessReady(context.Background())
+	if err != nil {
+		t.Fatalf("process ready returned error: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("expected printed job to count as processed, got %d", processed)
+	}
+	if publisher.buildCalls != 1 || publisher.publishCalls != 1 {
+		t.Fatalf("expected one build/publish call, got build=%d publish=%d", publisher.buildCalls, publisher.publishCalls)
+	}
+	if len(publisher.publishedPayloads) != 1 || publisher.publishedPayloads[0].Type != "printed" {
+		t.Fatalf("unexpected published payloads: %+v", publisher.publishedPayloads)
+	}
+	if _, err := os.Stat(store.pendingPath("evt-123")); !os.IsNotExist(err) {
+		t.Fatalf("expected printed job to be removed from pending queue, stat err=%v", err)
+	}
+
+	record, found, err := outbox.PendingRecord("evt-123")
+	if err != nil {
+		t.Fatalf("check outbox record: %v", err)
+	}
+	if found {
+		t.Fatalf("expected outbox to be drained, found record %+v", record)
+	}
+}
+
+func TestProcessorRecoverQueuedPrintedOutcomeWithoutReprinting(t *testing.T) {
+	spoolDir := t.TempDir()
+	store := mustStore(t, spoolDir)
+	outbox, err := mqttstatus.NewFileOutbox(spoolDir)
+	if err != nil {
+		t.Fatalf("new outbox: %v", err)
+	}
+
+	now := time.Date(2026, 3, 5, 12, 0, 0, 0, time.UTC)
+	_, _, err = store.Enqueue(buildCommand(), now)
+	if err != nil {
+		t.Fatalf("enqueue returned error: %v", err)
+	}
+
+	if err := outbox.Enqueue(mqttstatus.PendingOutcomeRecord{
+		DispatchEventID: "evt-123",
+		AttemptCount:    1,
+		LPOutput:        "request id is printer-01-42",
+		Payload: mqttstatus.PrintJobOutcomePayload{
+			SchemaVersion: "1.0.0",
+			Type:          "printed",
+			EventID:       "outcome-printed-1",
+			TraceID:       "trace-123",
+			JobID:         "job-123",
+			PrinterID:     "printer-01",
+			Outcome:       "printed",
+			OccurredAt:    "2026-03-05T12:00:00Z",
+		},
+	}); err != nil {
+		t.Fatalf("enqueue outbox record: %v", err)
+	}
+
+	publisher := &fakeOutcomePublisher{}
+	processor, err := NewProcessor(ProcessorConfig{
+		Store: store,
+		Executor: fakeExecutor{execute: func(context.Context, jobexec.Command) jobexec.Result {
+			t.Fatal("executor should not rerun when a queued terminal outcome exists")
+			return jobexec.Result{}
+		}},
+		RetryPolicy:      RetryPolicy{MaxAttempts: 3, InitialDelay: time.Second, MaxDelay: time.Second, Multiplier: 2},
+		Now:              func() time.Time { return now },
+		OutcomePublisher: publisher,
+		OutcomeOutbox:    outbox,
+	})
+	if err != nil {
+		t.Fatalf("new processor returned error: %v", err)
+	}
+
+	processed, err := processor.ProcessReady(context.Background())
+	if err != nil {
+		t.Fatalf("process ready returned error: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("expected recovered job to count as processed, got %d", processed)
+	}
+	if publisher.publishCalls != 1 {
+		t.Fatalf("expected one publish call, got %d", publisher.publishCalls)
+	}
+	if _, err := os.Stat(store.pendingPath("evt-123")); !os.IsNotExist(err) {
+		t.Fatalf("expected recovered printed job to be removed from pending queue, stat err=%v", err)
+	}
+}
+
+func TestProcessorQueuesTerminalFailureOutcomeAndRetainsItOnPublishFailure(t *testing.T) {
+	spoolDir := t.TempDir()
+	store := mustStore(t, spoolDir)
+	outbox, err := mqttstatus.NewFileOutbox(spoolDir)
+	if err != nil {
+		t.Fatalf("new outbox: %v", err)
+	}
+
+	now := time.Date(2026, 3, 5, 12, 0, 0, 0, time.UTC)
+	_, _, err = store.Enqueue(buildCommand(), now)
+	if err != nil {
+		t.Fatalf("enqueue returned error: %v", err)
+	}
+
+	publisher := &fakeOutcomePublisher{
+		payload: mqttstatus.PrintJobOutcomePayload{
+			SchemaVersion: "1.0.0",
+			Type:          "failed",
+			EventID:       "outcome-failed-1",
+			TraceID:       "trace-123",
+			JobID:         "job-123",
+			PrinterID:     "printer-01",
+			Outcome:       "failed",
+			OccurredAt:    "2026-03-05T12:00:00Z",
+			ErrorCode:     "print_failed",
+			ErrorMessage:  "busy",
+		},
+		publishErrs: []error{errors.New("broker unavailable")},
+	}
+
+	processor, err := NewProcessor(ProcessorConfig{
+		Store: store,
+		Executor: fakeExecutor{execute: func(context.Context, jobexec.Command) jobexec.Result {
+			return jobexec.Result{Outcome: jobexec.OutcomeFailed, ErrorCode: "print_failed", ErrorMessage: "busy"}
+		}},
+		RetryPolicy:      RetryPolicy{MaxAttempts: 1, InitialDelay: time.Second, MaxDelay: time.Second, Multiplier: 2},
+		Now:              func() time.Time { return now },
+		OutcomePublisher: publisher,
+		OutcomeOutbox:    outbox,
+	})
+	if err != nil {
+		t.Fatalf("new processor returned error: %v", err)
+	}
+
+	processed, err := processor.ProcessReady(context.Background())
+	if err != nil {
+		t.Fatalf("process ready returned error: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("expected failed job to count as processed, got %d", processed)
+	}
+
+	record, found, err := outbox.PendingRecord("evt-123")
+	if err != nil {
+		t.Fatalf("check outbox record: %v", err)
+	}
+	if !found || record.Payload.Type != "failed" {
+		t.Fatalf("expected retained failed outcome record, got found=%v record=%+v", found, record)
+	}
+
+	failedPath := filepath.Join(spoolDir, queueSubdirectory, failedSubdirectory, queueRecordFilename("evt-123"))
+	if _, err := os.Stat(failedPath); err != nil {
+		t.Fatalf("expected failed queue record, stat err=%v", err)
+	}
+}
+
 func TestProcessorSchedulesRetriesFromPerJobFailureTime(t *testing.T) {
 	store := mustStore(t, t.TempDir())
 	initialTime := time.Date(2026, 3, 5, 12, 0, 0, 0, time.UTC)
@@ -438,4 +636,56 @@ type fakeExecutor struct {
 
 func (executor fakeExecutor) Execute(ctx context.Context, command jobexec.Command) jobexec.Result {
 	return executor.execute(ctx, command)
+}
+
+type fakeOutcomePublisher struct {
+	payload           mqttstatus.PrintJobOutcomePayload
+	buildCalls        int
+	publishCalls      int
+	publishedPayloads []mqttstatus.PrintJobOutcomePayload
+	publishErrs       []error
+}
+
+func (publisher *fakeOutcomePublisher) BuildPrintJobOutcomePayload(
+	input mqttstatus.PublishPrintJobOutcomeInput,
+) (mqttstatus.PrintJobOutcomePayload, error) {
+	publisher.buildCalls++
+	if publisher.payload.EventID == "" {
+		publisher.payload = mqttstatus.PrintJobOutcomePayload{
+			SchemaVersion: "1.0.0",
+			Type:          string(input.Outcome),
+			EventID:       "generated-outcome-event",
+			TraceID:       input.TraceID,
+			JobID:         input.JobID,
+			PrinterID:     input.PrinterID,
+			Outcome:       string(input.Outcome),
+			OccurredAt:    "2026-03-05T12:00:00Z",
+			ErrorCode:     input.ErrorCode,
+			ErrorMessage:  input.ErrorMessage,
+		}
+	}
+
+	return publisher.payload, nil
+}
+
+func (publisher *fakeOutcomePublisher) PublishPayload(
+	_ context.Context,
+	payload mqttstatus.PrintJobOutcomePayload,
+) (mqttstatus.PublishPrintJobOutcomeResult, error) {
+	publisher.publishCalls++
+	publisher.publishedPayloads = append(publisher.publishedPayloads, payload)
+
+	if len(publisher.publishErrs) != 0 {
+		err := publisher.publishErrs[0]
+		publisher.publishErrs = publisher.publishErrs[1:]
+		if err != nil {
+			return mqttstatus.PublishPrintJobOutcomeResult{}, err
+		}
+	}
+
+	return mqttstatus.PublishPrintJobOutcomeResult{
+		Topic:   "printers/" + payload.PrinterID + "/status",
+		QoS:     1,
+		Payload: payload,
+	}, nil
 }

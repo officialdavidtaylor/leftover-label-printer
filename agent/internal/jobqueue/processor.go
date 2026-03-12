@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/jobexec"
+	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/mqttstatus"
 )
 
 const (
@@ -34,15 +35,28 @@ type RetryPolicy struct {
 
 // ProcessorConfig configures durable queue execution.
 type ProcessorConfig struct {
-	Store       *Store
-	Executor    printCommandExecutor
-	RetryPolicy RetryPolicy
-	Logger      Logger
-	Now         func() time.Time
+	Store            *Store
+	Executor         printCommandExecutor
+	RetryPolicy      RetryPolicy
+	Logger           Logger
+	Now              func() time.Time
+	OutcomePublisher terminalOutcomePublisher
+	OutcomeOutbox    terminalOutcomeOutbox
 }
 
 type printCommandExecutor interface {
 	Execute(ctx context.Context, command jobexec.Command) jobexec.Result
+}
+
+type terminalOutcomePublisher interface {
+	mqttstatus.OutcomePayloadPublisher
+	BuildPrintJobOutcomePayload(input mqttstatus.PublishPrintJobOutcomeInput) (mqttstatus.PrintJobOutcomePayload, error)
+}
+
+type terminalOutcomeOutbox interface {
+	Enqueue(record mqttstatus.PendingOutcomeRecord) error
+	Drain(ctx context.Context, publisher mqttstatus.OutcomePayloadPublisher) (int, error)
+	PendingRecord(dispatchEventID string) (mqttstatus.PendingOutcomeRecord, bool, error)
 }
 
 // Processor executes queued jobs with bounded retry and dead-letter persistence.
@@ -52,6 +66,8 @@ type Processor struct {
 	retryPolicy RetryPolicy
 	logger      Logger
 	now         func() time.Time
+	outcomes    terminalOutcomePublisher
+	outbox      terminalOutcomeOutbox
 }
 
 func NewProcessor(config ProcessorConfig) (*Processor, error) {
@@ -60,6 +76,9 @@ func NewProcessor(config ProcessorConfig) (*Processor, error) {
 	}
 	if config.Executor == nil {
 		return nil, errors.New("executor is required")
+	}
+	if (config.OutcomePublisher == nil) != (config.OutcomeOutbox == nil) {
+		return nil, errors.New("outcome publisher and outbox must both be set or both be nil")
 	}
 
 	now := config.Now
@@ -73,6 +92,8 @@ func NewProcessor(config ProcessorConfig) (*Processor, error) {
 		retryPolicy: normalizeRetryPolicy(config.RetryPolicy),
 		logger:      config.Logger,
 		now:         now,
+		outcomes:    config.OutcomePublisher,
+		outbox:      config.OutcomeOutbox,
 	}, nil
 }
 
@@ -87,6 +108,15 @@ func (processor *Processor) ProcessReady(ctx context.Context) (int, error) {
 	for _, queuedJob := range readyJobs {
 		if ctx.Err() != nil {
 			return processed, nil
+		}
+
+		recovered, err := processor.recoverQueuedTerminalOutcome(ctx, queuedJob)
+		if err != nil {
+			return processed, err
+		}
+		if recovered {
+			processed++
+			continue
 		}
 
 		result := processor.executor.Execute(ctx, jobexec.Command{
@@ -108,7 +138,7 @@ func (processor *Processor) ProcessReady(ctx context.Context) (int, error) {
 		}
 
 		if result.Outcome == jobexec.OutcomePrinted {
-			if err := processor.store.DeletePending(queuedJob.EventID); err != nil {
+			if err := processor.handlePrintedOutcome(ctx, queuedJob, result); err != nil {
 				return processed, err
 			}
 			info(processor.logger, "queue_job_printed", map[string]any{
@@ -128,13 +158,7 @@ func (processor *Processor) ProcessReady(ctx context.Context) (int, error) {
 		queuedJob.LastErrorMessage = result.ErrorMessage
 
 		if attemptNumber >= processor.retryPolicy.MaxAttempts {
-			if err := processor.store.MovePendingToFailed(FailedJob{
-				QueuedJob:         queuedJob,
-				FinalErrorCode:    result.ErrorCode,
-				FinalErrorMessage: result.ErrorMessage,
-				FinalLPOutput:     result.LPOutput,
-				FailedAt:          failureTime,
-			}); err != nil {
+			if err := processor.handleTerminalFailure(ctx, queuedJob, result, failureTime); err != nil {
 				return processed, err
 			}
 
@@ -174,6 +198,175 @@ func (processor *Processor) ProcessReady(ctx context.Context) (int, error) {
 	}
 
 	return processed, nil
+}
+
+func (processor *Processor) handlePrintedOutcome(
+	ctx context.Context,
+	queuedJob QueuedJob,
+	result jobexec.Result,
+) error {
+	record, err := processor.queueTerminalOutcome(queuedJob, result, queuedJob.AttemptCount+1)
+	if err != nil {
+		return err
+	}
+
+	if err := processor.store.DeletePending(queuedJob.EventID); err != nil {
+		return err
+	}
+
+	processor.drainTerminalOutcomes(ctx, queuedJob, record)
+	return nil
+}
+
+func (processor *Processor) handleTerminalFailure(
+	ctx context.Context,
+	queuedJob QueuedJob,
+	result jobexec.Result,
+	failureTime time.Time,
+) error {
+	queuedJob.AttemptCount = queuedJob.AttemptCount + 1
+	queuedJob.LastErrorCode = result.ErrorCode
+	queuedJob.LastErrorMessage = result.ErrorMessage
+
+	record, err := processor.queueTerminalOutcome(queuedJob, result, queuedJob.AttemptCount)
+	if err != nil {
+		return err
+	}
+
+	if err := processor.store.MovePendingToFailed(FailedJob{
+		QueuedJob:         queuedJob,
+		FinalErrorCode:    result.ErrorCode,
+		FinalErrorMessage: result.ErrorMessage,
+		FinalLPOutput:     result.LPOutput,
+		FailedAt:          failureTime,
+	}); err != nil {
+		return err
+	}
+
+	processor.drainTerminalOutcomes(ctx, queuedJob, record)
+	return nil
+}
+
+func (processor *Processor) queueTerminalOutcome(
+	queuedJob QueuedJob,
+	result jobexec.Result,
+	attemptCount int,
+) (mqttstatus.PendingOutcomeRecord, error) {
+	if processor.outcomes == nil || processor.outbox == nil {
+		return mqttstatus.PendingOutcomeRecord{}, nil
+	}
+
+	payload, err := processor.outcomes.BuildPrintJobOutcomePayload(mqttstatus.PublishPrintJobOutcomeInput{
+		TraceID:      queuedJob.TraceID,
+		JobID:        queuedJob.JobID,
+		PrinterID:    queuedJob.PrinterID,
+		Outcome:      result.Outcome,
+		ErrorCode:    result.ErrorCode,
+		ErrorMessage: result.ErrorMessage,
+	})
+	if err != nil {
+		return mqttstatus.PendingOutcomeRecord{}, err
+	}
+
+	record := mqttstatus.PendingOutcomeRecord{
+		DispatchEventID: queuedJob.EventID,
+		AttemptCount:    attemptCount,
+		LPOutput:        result.LPOutput,
+		Payload:         payload,
+	}
+	if err := processor.outbox.Enqueue(record); err != nil {
+		return mqttstatus.PendingOutcomeRecord{}, err
+	}
+
+	return record, nil
+}
+
+func (processor *Processor) recoverQueuedTerminalOutcome(ctx context.Context, queuedJob QueuedJob) (bool, error) {
+	if processor.outcomes == nil || processor.outbox == nil {
+		return false, nil
+	}
+
+	record, found, err := processor.outbox.PendingRecord(queuedJob.EventID)
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		return false, nil
+	}
+
+	switch record.Payload.Type {
+	case string(jobexec.OutcomePrinted):
+		if err := processor.store.DeletePending(queuedJob.EventID); err != nil {
+			return false, err
+		}
+	case string(jobexec.OutcomeFailed):
+		failedAt, err := parseOccurredAt(record.Payload.OccurredAt)
+		if err != nil {
+			return false, err
+		}
+
+		queuedJob.AttemptCount = record.AttemptCount
+		queuedJob.LastErrorCode = record.Payload.ErrorCode
+		queuedJob.LastErrorMessage = record.Payload.ErrorMessage
+		if err := processor.store.MovePendingToFailed(FailedJob{
+			QueuedJob:         queuedJob,
+			FinalErrorCode:    record.Payload.ErrorCode,
+			FinalErrorMessage: record.Payload.ErrorMessage,
+			FinalLPOutput:     record.LPOutput,
+			FailedAt:          failedAt,
+		}); err != nil {
+			return false, err
+		}
+	default:
+		return false, errors.New("queued terminal outcome has unsupported type")
+	}
+
+	processor.drainTerminalOutcomes(ctx, queuedJob, record)
+	return true, nil
+}
+
+func (processor *Processor) drainTerminalOutcomes(
+	ctx context.Context,
+	queuedJob QueuedJob,
+	record mqttstatus.PendingOutcomeRecord,
+) {
+	if processor.outcomes == nil || processor.outbox == nil {
+		return
+	}
+
+	if publishedCount, err := processor.outbox.Drain(ctx, processor.outcomes); err != nil {
+		warn(processor.logger, "queue_job_outcome_publish_deferred", map[string]any{
+			"eventId":        queuedJob.EventID,
+			"jobId":          queuedJob.JobID,
+			"printerId":      queuedJob.PrinterID,
+			"outcomeEventId": record.Payload.EventID,
+			"outcome":        record.Payload.Type,
+			"error":          err.Error(),
+		})
+	} else if publishedCount > 0 {
+		info(processor.logger, "queue_job_terminal_outcome_recovered", map[string]any{
+			"eventId":        queuedJob.EventID,
+			"jobId":          queuedJob.JobID,
+			"printerId":      queuedJob.PrinterID,
+			"outcomeEventId": record.Payload.EventID,
+			"outcome":        record.Payload.Type,
+			"publishedCount": publishedCount,
+		})
+	}
+}
+
+func parseOccurredAt(value string) (time.Time, error) {
+	occurredAt, err := time.Parse(time.RFC3339Nano, value)
+	if err == nil {
+		return occurredAt.UTC(), nil
+	}
+
+	occurredAt, err = time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	return occurredAt.UTC(), nil
 }
 
 // NextWakeDelay resolves the next sleep duration based on pending queue state.

@@ -13,6 +13,7 @@ import (
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/jobqueue"
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/mqttclient"
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/mqttconsume"
+	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/mqttstatus"
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/print"
 )
 
@@ -57,30 +58,8 @@ func main() {
 		log.Fatalf("build durable queue store: %v", err)
 	}
 
-	queueProcessor, err := jobqueue.NewProcessor(jobqueue.ProcessorConfig{
-		Store:    queueStore,
-		Executor: commandExecutor,
-		RetryPolicy: jobqueue.RetryPolicy{
-			MaxAttempts:  cfg.RetryMaxAttempts,
-			InitialDelay: cfg.RetryInitialDelay,
-			MaxDelay:     cfg.RetryMaxDelay,
-			Multiplier:   cfg.RetryMultiplier,
-		},
-		Logger: stdlibConsumeLogger{},
-	})
-	if err != nil {
-		log.Fatalf("build queue processor: %v", err)
-	}
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
-	queueWake := make(chan struct{}, 1)
-	queueWorkerErr := make(chan error, 1)
-	go func() {
-		queueWorkerErr <- jobqueue.RunLoop(ctx, queueProcessor, cfg.PollInterval, queueWake)
-		stop()
-	}()
 
 	client, err := mqttclient.NewPahoClient(mqttclient.Config{
 		BrokerURL: cfg.MQTTBrokerURL,
@@ -90,6 +69,59 @@ func main() {
 	})
 	if err != nil {
 		log.Fatalf("build mqtt client: %v", err)
+	}
+
+	statusPublisherClient, err := mqttclient.NewPahoClient(mqttclient.Config{
+		BrokerURL: cfg.MQTTBrokerURL,
+		ClientID:  cfg.MQTTClientID + "-status-publisher",
+		Username:  cfg.MQTTUsername,
+		Password:  cfg.MQTTPassword,
+	})
+	if err != nil {
+		log.Fatalf("build mqtt status publisher client: %v", err)
+	}
+
+	statusPublisher, err := mqttstatus.NewPublisher(mqttstatus.Config{
+		Client: statusPublisherClient,
+	})
+	if err != nil {
+		log.Fatalf("build mqtt status publisher: %v", err)
+	}
+
+	statusOutbox, err := mqttstatus.NewFileOutbox(cfg.SpoolDir)
+	if err != nil {
+		log.Fatalf("build mqtt status outbox: %v", err)
+	}
+
+	queueProcessor, err := jobqueue.NewProcessor(jobqueue.ProcessorConfig{
+		Store:    queueStore,
+		Executor: commandExecutor,
+		RetryPolicy: jobqueue.RetryPolicy{
+			MaxAttempts:  cfg.RetryMaxAttempts,
+			InitialDelay: cfg.RetryInitialDelay,
+			MaxDelay:     cfg.RetryMaxDelay,
+			Multiplier:   cfg.RetryMultiplier,
+		},
+		Logger:           stdlibConsumeLogger{},
+		OutcomePublisher: statusPublisher,
+		OutcomeOutbox:    statusOutbox,
+	})
+	if err != nil {
+		log.Fatalf("build queue processor: %v", err)
+	}
+
+	queueWake := make(chan struct{}, 1)
+	queueWorkerErr := make(chan error, 1)
+	go func() {
+		queueWorkerErr <- jobqueue.RunLoop(ctx, queueProcessor, cfg.PollInterval, queueWake)
+		stop()
+	}()
+
+	publishedCount, err := statusOutbox.Drain(ctx, statusPublisher)
+	if err != nil {
+		log.Printf("status outbox drain deferred (error=%v)", err)
+	} else if publishedCount > 0 {
+		log.Printf("status outbox drained pending outcomes (count=%d)", publishedCount)
 	}
 
 	log.Printf("agent mqtt consumer starting (printer_id=%s broker=%s)", cfg.PrinterID, cfg.MQTTBrokerURL)

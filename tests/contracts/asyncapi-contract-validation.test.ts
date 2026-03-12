@@ -13,7 +13,7 @@ describe('asyncapi-contract-validation', () => {
     const specText = fs.readFileSync(asyncApiPath, 'utf8');
 
     expect(specText).toContain('asyncapi: 2.6.0');
-    expect(specText).toContain('version: 0.2.0');
+    expect(specText).toContain('version: 0.3.0');
     expect(specText).toContain('printers/{id}/jobs:');
     expect(specText).toContain('printers/{id}/status:');
     expect(specText).toContain('qos: 1');
