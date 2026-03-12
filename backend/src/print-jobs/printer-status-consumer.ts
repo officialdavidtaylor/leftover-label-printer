@@ -101,7 +101,7 @@ export type PrinterStatusConsumeResult =
 export type PrinterStatusLogRecord = {
   event: 'printer_status_consumed';
   result: PrinterStatusConsumeResult['status'];
-  reason?: PrinterStatusConsumeResult extends { reason: infer T } ? T : never;
+  reason?: Extract<PrinterStatusConsumeResult, { reason: unknown }>['reason'];
   jobId?: string;
   printerId?: string;
   traceId?: string;
@@ -249,10 +249,11 @@ export async function consumePrinterStatusEvent(
     ...(parsedPayload.payload.errorCode ? { errorCode: parsedPayload.payload.errorCode } : {}),
     ...(parsedPayload.payload.errorMessage ? { errorMessage: parsedPayload.payload.errorMessage } : {}),
   });
+  const nextState = parsedPayload.payload.outcome;
 
   await deps.store.appendEventAndSetState({
     jobId: job.jobId,
-    nextState: decision.nextState,
+    nextState,
     event,
   });
 
@@ -262,12 +263,12 @@ export async function consumePrinterStatusEvent(
     printerId: parsedPayload.payload.printerId,
     jobId: parsedPayload.payload.jobId,
     traceId: parsedPayload.payload.traceId,
-    nextState: decision.nextState,
+    nextState,
   });
 
   return {
     status: 'accepted',
-    nextState: decision.nextState,
+    nextState,
     event,
   };
 }
