@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 
 import { authorizePrintJobOperation, buildForbiddenError } from '../auth/rbac-policy.ts';
+import { extractBearerToken } from '../auth/extract-bearer-token.ts';
 import { buildUnauthorizedError, type VerifiedJwtContext } from '../auth/jwt-verifier.ts';
 import type {
   JobEventDocument,
@@ -10,8 +11,10 @@ import type {
   PrintJobState,
   RenderedPdfMetadataDocument,
 } from '../data/schema-contracts.ts';
+import { jobEventDocumentSchema } from '../data/schema-contracts.ts';
 import { DuplicateIdempotencyKeyError } from '../print-jobs/idempotent-submission.ts';
 import { publishPrintJobCommand } from '../print-jobs/print-job-command-publisher.ts';
+import { applyPrintJobTransition } from '../print-jobs/state-machine-contract.ts';
 
 const createPrintJobRequestSchema = z.object({
   idempotencyKey: z.string().trim().min(1),
@@ -60,6 +63,11 @@ export type PersistedPrintJob = {
 export interface CreatePrintJobStore {
   findByIdempotencyKey(idempotencyKey: string): Promise<PersistedPrintJob | null>;
   insertAccepted(data: { job: PersistedPrintJob; event: JobEventDocument }): Promise<void>;
+  appendEventAndSetState(data: {
+    jobId: string;
+    nextState: PrintJobState;
+    event: JobEventDocument;
+  }): Promise<void>;
   printerExists(printerId: string): Promise<boolean>;
   templateExists(templateId: string, templateVersion?: string): Promise<boolean>;
 }
@@ -268,11 +276,12 @@ export async function handleCreatePrintJob(
     throw error;
   }
 
-  await dispatchAcceptedPrintJob(
+  const acceptedResponse = toAcceptedResponse(job);
+
+  await progressAcceptedPrintJob(
     {
       job,
       templateVersion,
-      acceptedAt,
     },
     deps
   );
@@ -287,21 +296,8 @@ export async function handleCreatePrintJob(
 
   return {
     status: 202,
-    body: toAcceptedResponse(job),
+    body: acceptedResponse,
   };
-}
-
-function extractBearerToken(authorizationHeader: string | undefined): string | null {
-  if (!authorizationHeader) {
-    return null;
-  }
-
-  const match = authorizationHeader.match(/^Bearer\s+(.+)$/i);
-  if (!match || !match[1]) {
-    return null;
-  }
-
-  return match[1].trim();
 }
 
 function createPrintJob(
@@ -354,52 +350,199 @@ function toAcceptedResponse(job: PersistedPrintJob): PrintJobAcceptedResponse {
   };
 }
 
-async function dispatchAcceptedPrintJob(
+async function progressAcceptedPrintJob(
   input: {
     job: PersistedPrintJob;
     templateVersion: string;
-    acceptedAt: string;
   },
   deps: CreatePrintJobDependencies
 ): Promise<void> {
-  const rendered = await deps.renderPdf({
-    templateId: input.job.templateId,
-    templateVersion: input.templateVersion,
-    payload: input.job.payload,
-  });
+  let currentState = input.job.state;
 
-  const renderedPdf = await deps.uploadRenderedPdf({
-    jobId: input.job.jobId,
-    printerId: input.job.printerId,
-    templateId: input.job.templateId,
-    templateVersion: input.templateVersion,
-    bucket: deps.renderedPdfBucket,
-    pdf: rendered.pdfBytes,
-    contentType: rendered.contentType,
-  });
-
-  const downloadUrl = await deps.createRenderedPdfDownloadUrl({
-    jobId: input.job.jobId,
-    renderedPdf: {
-      bucket: renderedPdf.bucket,
-      key: renderedPdf.key,
-    },
-  });
-
-  await publishPrintJobCommand(
+  currentState = await appendBackendTransition(
     {
+      job: input.job,
+      currentState,
+      targetState: 'processing',
+      occurredAt: timestampForLifecycleEvent(deps),
+    },
+    deps
+  );
+
+  try {
+    const rendered = await deps.renderPdf({
+      templateId: input.job.templateId,
+      templateVersion: input.templateVersion,
+      payload: input.job.payload,
+    });
+
+    const renderedPdf = await deps.uploadRenderedPdf({
       jobId: input.job.jobId,
       printerId: input.job.printerId,
+      templateId: input.job.templateId,
+      templateVersion: input.templateVersion,
+      bucket: deps.renderedPdfBucket,
+      pdf: rendered.pdfBytes,
+      contentType: rendered.contentType,
+    });
+
+    const downloadUrl = await deps.createRenderedPdfDownloadUrl({
+      jobId: input.job.jobId,
+      renderedPdf: {
+        bucket: renderedPdf.bucket,
+        key: renderedPdf.key,
+      },
+    });
+
+    currentState = await appendBackendTransition(
+      {
+        job: input.job,
+        currentState,
+        targetState: 'dispatched',
+        occurredAt: timestampForLifecycleEvent(deps),
+      },
+      deps
+    );
+
+    await publishPrintJobCommand(
+      {
+        jobId: input.job.jobId,
+        printerId: input.job.printerId,
+        traceId: input.job.traceId,
+        objectUrl: downloadUrl.url,
+        issuedAt: timestampForLifecycleEvent(deps),
+      },
+      {
+        publisher: deps.commandPublisher,
+        createEventId: deps.createCommandEventId,
+        now: deps.now,
+      }
+    );
+  } catch (error) {
+    await appendBackendFailureTransition(
+      {
+        job: input.job,
+        currentState,
+        occurredAt: timestampForLifecycleEvent(deps),
+        error,
+      },
+      deps
+    );
+    throw error;
+  }
+}
+
+async function appendBackendTransition(
+  input: {
+    job: PersistedPrintJob;
+    currentState: PrintJobState;
+    targetState: Extract<PrintJobState, 'processing' | 'dispatched'>;
+    occurredAt: string;
+  },
+  deps: CreatePrintJobDependencies
+): Promise<PrintJobState> {
+  const decision = applyPrintJobTransition({
+    jobId: input.job.jobId,
+    currentState: input.currentState,
+    event: {
+      eventId: `event-${randomUUID()}`,
       traceId: input.job.traceId,
-      objectUrl: downloadUrl.url,
-      issuedAt: input.acceptedAt,
+      source: 'backend',
+      targetState: input.targetState,
+      occurredAt: input.occurredAt,
     },
-    {
-      publisher: deps.commandPublisher,
-      createEventId: deps.createCommandEventId,
-      now: deps.now,
-    }
-  );
+  });
+
+  if (!decision.accepted) {
+    throw new Error(
+      `unexpected backend transition rejection (${input.currentState} -> ${input.targetState}: ${decision.reason})`
+    );
+  }
+
+  const event = jobEventDocumentSchema.parse({
+    eventId: decision.log.eventId,
+    jobId: input.job.jobId,
+    type: input.targetState,
+    source: 'backend',
+    occurredAt: input.occurredAt,
+    traceId: input.job.traceId,
+  });
+
+  await deps.store.appendEventAndSetState({
+    jobId: input.job.jobId,
+    nextState: decision.nextState,
+    event,
+  });
+
+  return decision.nextState;
+}
+
+async function appendBackendFailureTransition(
+  input: {
+    job: PersistedPrintJob;
+    currentState: PrintJobState;
+    occurredAt: string;
+    error: unknown;
+  },
+  deps: CreatePrintJobDependencies
+): Promise<void> {
+  if (input.currentState === 'failed' || input.currentState === 'printed') {
+    return;
+  }
+
+  const decision = applyPrintJobTransition({
+    jobId: input.job.jobId,
+    currentState: input.currentState,
+    event: {
+      eventId: `event-${randomUUID()}`,
+      traceId: input.job.traceId,
+      source: 'backend',
+      targetState: 'failed',
+      occurredAt: input.occurredAt,
+    },
+  });
+
+  if (!decision.accepted) {
+    return;
+  }
+
+  const failureDetails = toBackendFailureDetails(input.currentState, input.error);
+  const event = jobEventDocumentSchema.parse({
+    eventId: decision.log.eventId,
+    jobId: input.job.jobId,
+    type: 'failed',
+    source: 'backend',
+    occurredAt: input.occurredAt,
+    traceId: input.job.traceId,
+    errorCode: failureDetails.errorCode,
+    errorMessage: failureDetails.errorMessage,
+  });
+
+  await deps.store.appendEventAndSetState({
+    jobId: input.job.jobId,
+    nextState: decision.nextState,
+    event,
+  });
+}
+
+function timestampForLifecycleEvent(deps: CreatePrintJobDependencies): string {
+  return (deps.now?.() ?? new Date()).toISOString();
+}
+
+function toBackendFailureDetails(
+  currentState: PrintJobState,
+  error: unknown
+): {
+  errorCode: string;
+  errorMessage: string;
+} {
+  const errorMessage = error instanceof Error ? error.message : 'unknown error';
+  const errorCode = currentState === 'dispatched' ? 'dispatch_publish_failed' : 'dispatch_prepare_failed';
+
+  return {
+    errorCode,
+    errorMessage,
+  };
 }
 
 function buildValidationError(traceId?: string): ErrorResponse {

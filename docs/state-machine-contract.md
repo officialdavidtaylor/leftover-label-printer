@@ -11,8 +11,9 @@ Implementation note: transition logic is modeled with an XState machine in `back
 1. `pending -> processing` (source: `backend`)
 2. `processing -> dispatched` (source: `backend`)
 3. `processing -> failed` (source: `backend`)
-4. `dispatched -> printed` (source: `agent`)
-5. `dispatched -> failed` (source: `agent`)
+4. `dispatched -> failed` (source: `backend`)
+5. `dispatched -> printed` (source: `agent`)
+6. `dispatched -> failed` (source: `agent`)
 
 No other transitions are accepted.
 

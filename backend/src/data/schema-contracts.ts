@@ -71,16 +71,16 @@ export const jobEventDocumentSchema = z
     errorMessage: nonEmptyStringSchema.optional(),
   })
   .superRefine((document, ctx) => {
-    const backendAllowedEvents = new Set<PrintJobState>(['pending', 'processing', 'dispatched']);
+    const backendAllowedEvents = new Set<PrintJobState>(['pending', 'processing', 'dispatched', 'failed']);
     const agentAllowedEvents = new Set<PrintJobState>(['printed', 'failed']);
 
     if (document.source === 'backend' && !backendAllowedEvents.has(document.type)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['type'],
-        message: 'backend source can only emit pending, processing, or dispatched events',
-      });
-    }
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['type'],
+          message: 'backend source can only emit pending, processing, dispatched, or failed events',
+        });
+      }
 
     if (document.source === 'agent') {
       if (!agentAllowedEvents.has(document.type)) {

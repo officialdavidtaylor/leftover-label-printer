@@ -13,15 +13,16 @@
 1. `pending -> processing`
 2. `processing -> dispatched`
 3. `processing -> failed`
-4. `dispatched -> printed`
-5. `dispatched -> failed`
+4. `dispatched -> failed`
+5. `dispatched -> printed`
+6. `dispatched -> failed` (agent terminal outcome)
 
 No other transition is allowed.
 
 ## Transition Authority
 
-1. Backend controls `pending`, `processing`, `dispatched`.
-2. Edge agent controls terminal outcome event (`printed` or `failed`).
+1. Backend controls `pending`, `processing`, `dispatched`, and failure states caused before confirmed edge completion.
+2. Edge agent controls definitive print outcome events (`printed` or `failed`) after dispatch.
 3. Backend sets `printed` only after validating an AG-06 outcome event.
 
 ## Required Event Fields
