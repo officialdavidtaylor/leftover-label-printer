@@ -22,6 +22,19 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 		t.Fatalf("expected default LP command path /usr/bin/lp, got %q", cfg.LPCommandPath)
 	}
 
+	if cfg.RetryMaxAttempts != 5 {
+		t.Fatalf("expected default retry max attempts 5, got %d", cfg.RetryMaxAttempts)
+	}
+	if cfg.RetryInitialDelay != 5*time.Second {
+		t.Fatalf("expected default retry initial delay 5s, got %s", cfg.RetryInitialDelay)
+	}
+	if cfg.RetryMaxDelay != 60*time.Second {
+		t.Fatalf("expected default retry max delay 60s, got %s", cfg.RetryMaxDelay)
+	}
+	if cfg.RetryMultiplier != 2 {
+		t.Fatalf("expected default retry multiplier 2, got %v", cfg.RetryMultiplier)
+	}
+
 	if cfg.ValidateOnly {
 		t.Fatal("expected validate-only mode to default false")
 	}
@@ -35,6 +48,10 @@ func TestLoadFromEnvWithOverrides(t *testing.T) {
 	t.Setenv("MQTT_CLIENT_ID", "agent-printer-09")
 	t.Setenv("MQTT_USERNAME", "agent-user")
 	t.Setenv("MQTT_PASSWORD", "agent-pass")
+	t.Setenv("AGENT_RETRY_MAX_ATTEMPTS", "8")
+	t.Setenv("AGENT_RETRY_INITIAL_DELAY_SECONDS", "3")
+	t.Setenv("AGENT_RETRY_MAX_DELAY_SECONDS", "15")
+	t.Setenv("AGENT_RETRY_MULTIPLIER", "1.5")
 	t.Setenv("AGENT_VALIDATE_ONLY", "true")
 
 	cfg, err := LoadFromEnv()
@@ -64,6 +81,19 @@ func TestLoadFromEnvWithOverrides(t *testing.T) {
 
 	if cfg.MQTTPassword != "agent-pass" {
 		t.Fatalf("expected MQTT password override, got %q", cfg.MQTTPassword)
+	}
+
+	if cfg.RetryMaxAttempts != 8 {
+		t.Fatalf("expected retry max attempts override 8, got %d", cfg.RetryMaxAttempts)
+	}
+	if cfg.RetryInitialDelay != 3*time.Second {
+		t.Fatalf("expected retry initial delay override 3s, got %s", cfg.RetryInitialDelay)
+	}
+	if cfg.RetryMaxDelay != 15*time.Second {
+		t.Fatalf("expected retry max delay override 15s, got %s", cfg.RetryMaxDelay)
+	}
+	if cfg.RetryMultiplier != 1.5 {
+		t.Fatalf("expected retry multiplier override 1.5, got %v", cfg.RetryMultiplier)
 	}
 
 	if !cfg.ValidateOnly {
@@ -111,6 +141,49 @@ func TestLoadFromEnvRejectsInvalidValidateOnly(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "AGENT_VALIDATE_ONLY") {
 		t.Fatalf("expected AGENT_VALIDATE_ONLY in error, got: %v", err)
+	}
+}
+
+func TestLoadFromEnvRejectsInvalidRetryMaxAttempts(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("AGENT_RETRY_MAX_ATTEMPTS", "0")
+
+	_, err := LoadFromEnv()
+	if err == nil {
+		t.Fatal("expected AGENT_RETRY_MAX_ATTEMPTS parse error")
+	}
+
+	if !strings.Contains(err.Error(), "AGENT_RETRY_MAX_ATTEMPTS") {
+		t.Fatalf("expected AGENT_RETRY_MAX_ATTEMPTS in error, got: %v", err)
+	}
+}
+
+func TestLoadFromEnvRejectsRetryMaxDelayLowerThanInitial(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("AGENT_RETRY_INITIAL_DELAY_SECONDS", "30")
+	t.Setenv("AGENT_RETRY_MAX_DELAY_SECONDS", "10")
+
+	_, err := LoadFromEnv()
+	if err == nil {
+		t.Fatal("expected retry delay ordering error")
+	}
+
+	if !strings.Contains(err.Error(), "AGENT_RETRY_MAX_DELAY_SECONDS") {
+		t.Fatalf("expected AGENT_RETRY_MAX_DELAY_SECONDS in error, got: %v", err)
+	}
+}
+
+func TestLoadFromEnvRejectsInvalidRetryMultiplier(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("AGENT_RETRY_MULTIPLIER", "0.5")
+
+	_, err := LoadFromEnv()
+	if err == nil {
+		t.Fatal("expected AGENT_RETRY_MULTIPLIER parse error")
+	}
+
+	if !strings.Contains(err.Error(), "AGENT_RETRY_MULTIPLIER") {
+		t.Fatalf("expected AGENT_RETRY_MULTIPLIER in error, got: %v", err)
 	}
 }
 

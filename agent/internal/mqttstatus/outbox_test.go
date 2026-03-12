@@ -15,34 +15,43 @@ func TestFileOutboxEnqueueAndDrainPublishesInOrder(t *testing.T) {
 		t.Fatalf("new outbox: %v", err)
 	}
 
-	firstPayload := PrintJobOutcomePayload{
-		SchemaVersion: "1.0.0",
-		Type:          "printed",
-		EventID:       "event-1",
-		TraceID:       "trace-1",
-		JobID:         "job-1",
-		PrinterID:     "printer-1",
-		Outcome:       "printed",
-		OccurredAt:    "2026-03-12T00:00:00Z",
+	firstRecord := PendingOutcomeRecord{
+		DispatchEventID: "dispatch-1",
+		AttemptCount:    1,
+		Payload: PrintJobOutcomePayload{
+			SchemaVersion: "1.0.0",
+			Type:          "printed",
+			EventID:       "event-1",
+			TraceID:       "trace-1",
+			JobID:         "job-1",
+			PrinterID:     "printer-1",
+			Outcome:       "printed",
+			OccurredAt:    "2026-03-12T00:00:00Z",
+		},
 	}
-	secondPayload := PrintJobOutcomePayload{
-		SchemaVersion: "1.0.0",
-		Type:          "failed",
-		EventID:       "event-2",
-		TraceID:       "trace-2",
-		JobID:         "job-2",
-		PrinterID:     "printer-1",
-		Outcome:       "failed",
-		OccurredAt:    "2026-03-12T00:00:01Z",
-		ErrorCode:     "print_failed",
-		ErrorMessage:  "lp exit status 1",
+	secondRecord := PendingOutcomeRecord{
+		DispatchEventID: "dispatch-2",
+		AttemptCount:    3,
+		LPOutput:        "lp exit status 1",
+		Payload: PrintJobOutcomePayload{
+			SchemaVersion: "1.0.0",
+			Type:          "failed",
+			EventID:       "event-2",
+			TraceID:       "trace-2",
+			JobID:         "job-2",
+			PrinterID:     "printer-1",
+			Outcome:       "failed",
+			OccurredAt:    "2026-03-12T00:00:01Z",
+			ErrorCode:     "print_failed",
+			ErrorMessage:  "lp exit status 1",
+		},
 	}
 
-	if err := outbox.Enqueue(secondPayload); err != nil {
-		t.Fatalf("enqueue second payload: %v", err)
+	if err := outbox.Enqueue(secondRecord); err != nil {
+		t.Fatalf("enqueue second record: %v", err)
 	}
-	if err := outbox.Enqueue(firstPayload); err != nil {
-		t.Fatalf("enqueue first payload: %v", err)
+	if err := outbox.Enqueue(firstRecord); err != nil {
+		t.Fatalf("enqueue first record: %v", err)
 	}
 
 	publisher := &capturePayloadPublisher{}
@@ -70,6 +79,42 @@ func TestFileOutboxEnqueueAndDrainPublishesInOrder(t *testing.T) {
 	}
 }
 
+func TestFileOutboxPendingRecordFindsQueuedOutcome(t *testing.T) {
+	outbox, err := NewFileOutbox(t.TempDir())
+	if err != nil {
+		t.Fatalf("new outbox: %v", err)
+	}
+
+	record := PendingOutcomeRecord{
+		DispatchEventID: "dispatch-1",
+		AttemptCount:    1,
+		Payload: PrintJobOutcomePayload{
+			SchemaVersion: "1.0.0",
+			Type:          "printed",
+			EventID:       "event-1",
+			TraceID:       "trace-1",
+			JobID:         "job-1",
+			PrinterID:     "printer-1",
+			Outcome:       "printed",
+			OccurredAt:    "2026-03-12T00:00:00Z",
+		},
+	}
+	if err := outbox.Enqueue(record); err != nil {
+		t.Fatalf("enqueue record: %v", err)
+	}
+
+	foundRecord, found, err := outbox.PendingRecord("dispatch-1")
+	if err != nil {
+		t.Fatalf("load pending record: %v", err)
+	}
+	if !found {
+		t.Fatal("expected queued outcome to be found")
+	}
+	if foundRecord.Payload.EventID != "event-1" {
+		t.Fatalf("unexpected pending record: %+v", foundRecord)
+	}
+}
+
 func TestFileOutboxRetainsPendingEntryOnPublishFailure(t *testing.T) {
 	spoolDir := t.TempDir()
 	outbox, err := NewFileOutbox(spoolDir)
@@ -77,19 +122,23 @@ func TestFileOutboxRetainsPendingEntryOnPublishFailure(t *testing.T) {
 		t.Fatalf("new outbox: %v", err)
 	}
 
-	payload := PrintJobOutcomePayload{
-		SchemaVersion: "1.0.0",
-		Type:          "printed",
-		EventID:       "event-1",
-		TraceID:       "trace-1",
-		JobID:         "job-1",
-		PrinterID:     "printer-1",
-		Outcome:       "printed",
-		OccurredAt:    "2026-03-12T00:00:00Z",
+	record := PendingOutcomeRecord{
+		DispatchEventID: "dispatch-1",
+		AttemptCount:    1,
+		Payload: PrintJobOutcomePayload{
+			SchemaVersion: "1.0.0",
+			Type:          "printed",
+			EventID:       "event-1",
+			TraceID:       "trace-1",
+			JobID:         "job-1",
+			PrinterID:     "printer-1",
+			Outcome:       "printed",
+			OccurredAt:    "2026-03-12T00:00:00Z",
+		},
 	}
 
-	if err := outbox.Enqueue(payload); err != nil {
-		t.Fatalf("enqueue payload: %v", err)
+	if err := outbox.Enqueue(record); err != nil {
+		t.Fatalf("enqueue record: %v", err)
 	}
 
 	publisher := &capturePayloadPublisher{

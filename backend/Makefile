@@ -4,13 +4,18 @@ SERVICE := backend
 .PHONY: install lint test build
 
 install:
-	@printf "[%s] install: placeholder for Node dependency setup (pending service implementation).\n" "$(SERVICE)"
+	@npm ci
 
 lint:
-	@printf "[%s] lint: placeholder for ESLint/format checks (pending service implementation).\n" "$(SERVICE)"
+	@npm run typecheck:backend
 
 test:
-	@printf "[%s] test: placeholder for unit tests (pending service implementation).\n" "$(SERVICE)"
+	@npm run backend:test
+	@npm run provider-contract:test
 
 build:
-	@printf "[%s] build: placeholder for backend build/transpile step (pending service implementation).\n" "$(SERVICE)"
+	@if command -v docker >/dev/null 2>&1; then \
+		docker build --file Dockerfile --tag leftover-label-printer/backend:local ..; \
+	else \
+		printf "[%s] build: docker not installed; skipped image build.\n" "$(SERVICE)"; \
+	fi

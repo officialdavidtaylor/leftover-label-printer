@@ -1,4 +1,4 @@
-import { createPublicKey, verify } from 'node:crypto';
+import { createPublicKey, verify, type JsonWebKey } from 'node:crypto';
 
 import { CANONICAL_ROLES_CLAIM } from './roles.ts';
 
@@ -47,8 +47,13 @@ type DiscoveryDoc = {
   jwks_uri: string;
 };
 
+type SigningJwk = JsonWebKey & {
+  kid?: string;
+  use?: string;
+};
+
 type JwkSet = {
-  keys: JsonWebKey[];
+  keys: SigningJwk[];
 };
 
 type CachedValue<T> = {
@@ -81,7 +86,7 @@ export class OidcJwtVerifier {
   ) {
     this.rolesClaim = config.rolesClaim ?? CANONICAL_ROLES_CLAIM;
     this.discoveryUrl =
-      config.discoveryUrl ?? new URL('.well-known/openid-configuration', config.issuerUrl).toString();
+      config.discoveryUrl ?? buildDiscoveryUrl(config.issuerUrl);
     this.discoveryCacheTtlMs = config.discoveryCacheTtlMs ?? 300_000;
     this.jwksCacheTtlMs = config.jwksCacheTtlMs ?? 300_000;
     this.fetchImpl = deps.fetchImpl ?? fetch;
@@ -198,7 +203,7 @@ export class OidcJwtVerifier {
     jwksUrl: string,
     kid: string | undefined,
     nowEpochMs: number
-  ): Promise<JsonWebKey | undefined> {
+  ): Promise<SigningJwk | undefined> {
     let jwks = await this.getJwks(jwksUrl, nowEpochMs, false);
     let key = findSigningKey(jwks, kid);
 
@@ -336,7 +341,7 @@ function getRequiredNumericClaim(payload: JwtPayload, claimName: string): number
   return value;
 }
 
-function findSigningKey(jwks: JwkSet, kid: string | undefined): JsonWebKey | undefined {
+function findSigningKey(jwks: JwkSet, kid: string | undefined): SigningJwk | undefined {
   const candidates = jwks.keys.filter((key) => key.kty === 'RSA' && key.use === 'sig');
   if (candidates.length === 0) {
     return undefined;
@@ -347,4 +352,9 @@ function findSigningKey(jwks: JwkSet, kid: string | undefined): JsonWebKey | und
   }
 
   return candidates.find((key) => key.kid === kid);
+}
+
+function buildDiscoveryUrl(issuerUrl: string): string {
+  const normalizedIssuerUrl = issuerUrl.endsWith('/') ? issuerUrl : `${issuerUrl}/`;
+  return new URL('.well-known/openid-configuration', normalizedIssuerUrl).toString();
 }

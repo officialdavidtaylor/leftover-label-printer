@@ -25,6 +25,8 @@ Agent runtime code is Go. New runtime features in `agent/` should be implemented
 - `LP_COMMAND_PATH` controls which `lp` binary is validated and executed.
 - `MQTT_BROKER_URL` selects the broker endpoint the consume loop connects to.
 - `MQTT_CLIENT_ID`, `MQTT_USERNAME`, and `MQTT_PASSWORD` are used for broker auth and identity.
+- `AGENT_RETRY_MAX_ATTEMPTS` bounds retries per queued command before dead-lettering.
+- `AGENT_RETRY_INITIAL_DELAY_SECONDS`, `AGENT_RETRY_MAX_DELAY_SECONDS`, and `AGENT_RETRY_MULTIPLIER` control exponential retry backoff.
 - `AGENT_VALIDATE_ONLY=true` runs startup validation then exits.
 
 ## Raspberry Pi host driver install (DYMO 450)

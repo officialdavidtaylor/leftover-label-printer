@@ -17,6 +17,13 @@ type OutcomePayloadPublisher interface {
 	PublishPayload(ctx context.Context, payload PrintJobOutcomePayload) (PublishPrintJobOutcomeResult, error)
 }
 
+type PendingOutcomeRecord struct {
+	DispatchEventID string                 `json:"dispatchEventId"`
+	AttemptCount    int                    `json:"attemptCount"`
+	LPOutput        string                 `json:"lpOutput,omitempty"`
+	Payload         PrintJobOutcomePayload `json:"payload"`
+}
+
 type FileOutbox struct {
 	directory string
 }
@@ -35,17 +42,17 @@ func NewFileOutbox(spoolDir string) (*FileOutbox, error) {
 	return &FileOutbox{directory: directory}, nil
 }
 
-func (outbox *FileOutbox) Enqueue(payload PrintJobOutcomePayload) error {
-	if _, err := validatePrintJobOutcomePayload(payload); err != nil {
+func (outbox *FileOutbox) Enqueue(record PendingOutcomeRecord) error {
+	if err := validatePendingOutcomeRecord(record); err != nil {
 		return err
 	}
 
-	body, err := json.Marshal(payload)
+	body, err := json.Marshal(record)
 	if err != nil {
 		return fmt.Errorf("marshal outbox payload: %w", err)
 	}
 
-	pendingPath, err := outbox.pendingFilePath(payload)
+	pendingPath, err := outbox.pendingFilePath(record)
 	if err != nil {
 		return err
 	}
@@ -93,12 +100,12 @@ func (outbox *FileOutbox) Drain(ctx context.Context, publisher OutcomePayloadPub
 
 	publishedCount := 0
 	for _, entryName := range entryNames {
-		payload, err := outbox.readEntry(entryName)
+		record, err := outbox.readEntry(entryName)
 		if err != nil {
 			return publishedCount, err
 		}
 
-		if _, err := publisher.PublishPayload(ctx, payload); err != nil {
+		if _, err := publisher.PublishPayload(ctx, record.Payload); err != nil {
 			return publishedCount, err
 		}
 
@@ -110,6 +117,30 @@ func (outbox *FileOutbox) Drain(ctx context.Context, publisher OutcomePayloadPub
 	}
 
 	return publishedCount, nil
+}
+
+func (outbox *FileOutbox) PendingRecord(dispatchEventID string) (PendingOutcomeRecord, bool, error) {
+	normalizedDispatchEventID := strings.TrimSpace(dispatchEventID)
+	if normalizedDispatchEventID == "" {
+		return PendingOutcomeRecord{}, false, fmt.Errorf("dispatchEventId is required")
+	}
+
+	entryNames, err := outbox.entryNames()
+	if err != nil {
+		return PendingOutcomeRecord{}, false, err
+	}
+
+	for _, entryName := range entryNames {
+		record, err := outbox.readEntry(entryName)
+		if err != nil {
+			return PendingOutcomeRecord{}, false, err
+		}
+		if record.DispatchEventID == normalizedDispatchEventID {
+			return record, true, nil
+		}
+	}
+
+	return PendingOutcomeRecord{}, false, nil
 }
 
 func (outbox *FileOutbox) entryNames() ([]string, error) {
@@ -134,40 +165,55 @@ func (outbox *FileOutbox) entryNames() ([]string, error) {
 	return names, nil
 }
 
-func (outbox *FileOutbox) readEntry(entryName string) (PrintJobOutcomePayload, error) {
+func (outbox *FileOutbox) readEntry(entryName string) (PendingOutcomeRecord, error) {
 	body, err := os.ReadFile(filepath.Join(outbox.directory, entryName))
 	if err != nil {
-		return PrintJobOutcomePayload{}, fmt.Errorf("read outbox file: %w", err)
+		return PendingOutcomeRecord{}, fmt.Errorf("read outbox file: %w", err)
 	}
 
-	var payload PrintJobOutcomePayload
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return PrintJobOutcomePayload{}, fmt.Errorf("decode outbox file: %w", err)
+	var record PendingOutcomeRecord
+	if err := json.Unmarshal(body, &record); err != nil {
+		return PendingOutcomeRecord{}, fmt.Errorf("decode outbox file: %w", err)
 	}
 
-	if _, err := validatePrintJobOutcomePayload(payload); err != nil {
-		return PrintJobOutcomePayload{}, err
+	if err := validatePendingOutcomeRecord(record); err != nil {
+		return PendingOutcomeRecord{}, err
 	}
 
-	return payload, nil
+	return record, nil
 }
 
-func (outbox *FileOutbox) pendingFilePath(payload PrintJobOutcomePayload) (string, error) {
-	occurredAt, err := time.Parse(time.RFC3339Nano, payload.OccurredAt)
+func (outbox *FileOutbox) pendingFilePath(record PendingOutcomeRecord) (string, error) {
+	occurredAt, err := time.Parse(time.RFC3339Nano, record.Payload.OccurredAt)
 	if err != nil {
-		occurredAt, err = time.Parse(time.RFC3339, payload.OccurredAt)
+		occurredAt, err = time.Parse(time.RFC3339, record.Payload.OccurredAt)
 		if err != nil {
 			return "", fmt.Errorf("parse occurredAt for outbox file: %w", err)
 		}
 	}
 
 	filename := fmt.Sprintf(
-		"%020d-%s.json",
+		"%020d-%s-%s.json",
 		occurredAt.UTC().UnixNano(),
-		sanitizeFileSegment(payload.EventID),
+		sanitizeFileSegment(record.DispatchEventID),
+		sanitizeFileSegment(record.Payload.EventID),
 	)
 
 	return filepath.Join(outbox.directory, filename), nil
+}
+
+func validatePendingOutcomeRecord(record PendingOutcomeRecord) error {
+	if strings.TrimSpace(record.DispatchEventID) == "" {
+		return fmt.Errorf("dispatchEventId is required")
+	}
+	if record.AttemptCount < 0 {
+		return fmt.Errorf("attemptCount must be zero or greater")
+	}
+	if _, err := validatePrintJobOutcomePayload(record.Payload); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func sanitizeFileSegment(input string) string {
