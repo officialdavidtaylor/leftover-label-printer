@@ -10,7 +10,7 @@ import (
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/mqttstatus"
 )
 
-func TestBuildPrintJobCommandHandlerExecutesAndPublishesOutcome(t *testing.T) {
+func TestBuildPrintJobCommandHandlerExecutesQueuesAndDrainsOutcome(t *testing.T) {
 	fakeExecutor := &captureExecutor{
 		result: jobexec.Result{
 			Outcome:      jobexec.OutcomeFailed,
@@ -19,18 +19,24 @@ func TestBuildPrintJobCommandHandlerExecutesAndPublishesOutcome(t *testing.T) {
 		},
 	}
 	fakePublisher := &captureOutcomePublisher{
-		result: mqttstatus.PublishPrintJobOutcomeResult{
-			Topic: "printers/printer-01/status",
-			Payload: mqttstatus.PrintJobOutcomePayload{
-				EventID:    "outcome-event-1",
-				OccurredAt: "2026-03-05T00:00:00Z",
-			},
+		payload: mqttstatus.PrintJobOutcomePayload{
+			SchemaVersion: "1.0.0",
+			Type:          "failed",
+			EventID:       "outcome-event-1",
+			TraceID:       "trace-123",
+			JobID:         "job-123",
+			PrinterID:     "printer-01",
+			Outcome:       "failed",
+			OccurredAt:    "2026-03-05T00:00:00Z",
+			ErrorCode:     "download_failed",
+			ErrorMessage:  "network timeout",
 		},
 	}
+	fakeOutbox := &captureOutcomeOutbox{}
 
-	handler := buildPrintJobCommandHandler(fakeExecutor, fakePublisher)
+	handler := buildPrintJobCommandHandler(fakeExecutor, fakePublisher, fakeOutbox)
 	err := handler(context.Background(), mqttconsume.PrintJobCommand{
-		EventID:   "event-123",
+		EventID:   "dispatch-event-123",
 		TraceID:   "trace-123",
 		JobID:     "job-123",
 		PrinterID: "printer-01",
@@ -40,108 +46,112 @@ func TestBuildPrintJobCommandHandlerExecutesAndPublishesOutcome(t *testing.T) {
 		t.Fatalf("expected nil handler error, got %v", err)
 	}
 
-	if fakeExecutor.command.EventID != "event-123" {
-		t.Fatalf("expected event id propagation, got %q", fakeExecutor.command.EventID)
+	if fakeExecutor.calls != 1 {
+		t.Fatalf("expected one executor call, got %d", fakeExecutor.calls)
 	}
-	if fakeExecutor.command.TraceID != "trace-123" {
-		t.Fatalf("expected trace id propagation, got %q", fakeExecutor.command.TraceID)
+	if fakePublisher.buildCalls != 1 {
+		t.Fatalf("expected one build call, got %d", fakePublisher.buildCalls)
 	}
-	if fakeExecutor.command.JobID != "job-123" {
-		t.Fatalf("expected job id propagation, got %q", fakeExecutor.command.JobID)
+	if fakePublisher.publishCalls != 1 {
+		t.Fatalf("expected one publish call, got %d", fakePublisher.publishCalls)
 	}
-	if fakeExecutor.command.PrinterID != "printer-01" {
-		t.Fatalf("expected printer id propagation, got %q", fakeExecutor.command.PrinterID)
+	if len(fakeOutbox.enqueued) != 1 {
+		t.Fatalf("expected one enqueued payload, got %d", len(fakeOutbox.enqueued))
 	}
-	if fakeExecutor.command.ObjectURL != "https://example.com/file.pdf" {
-		t.Fatalf("expected object url propagation, got %q", fakeExecutor.command.ObjectURL)
+	if fakeOutbox.drainCalls != 1 {
+		t.Fatalf("expected one drain call, got %d", fakeOutbox.drainCalls)
 	}
-
-	if fakePublisher.input.TraceID != "trace-123" {
-		t.Fatalf("expected trace id propagation to publisher, got %q", fakePublisher.input.TraceID)
+	if fakeOutbox.enqueued[0].EventID != "outcome-event-1" {
+		t.Fatalf("unexpected enqueued payload: %+v", fakeOutbox.enqueued[0])
 	}
-	if fakePublisher.input.JobID != "job-123" {
-		t.Fatalf("expected job id propagation to publisher, got %q", fakePublisher.input.JobID)
-	}
-	if fakePublisher.input.PrinterID != "printer-01" {
-		t.Fatalf("expected printer id propagation to publisher, got %q", fakePublisher.input.PrinterID)
-	}
-	if fakePublisher.input.Outcome != jobexec.OutcomeFailed {
-		t.Fatalf("expected failed outcome propagation to publisher, got %q", fakePublisher.input.Outcome)
-	}
-	if fakePublisher.input.ErrorCode != "download_failed" {
-		t.Fatalf("expected error code propagation, got %q", fakePublisher.input.ErrorCode)
-	}
-	if fakePublisher.input.ErrorMessage != "network timeout" {
-		t.Fatalf("expected error message propagation, got %q", fakePublisher.input.ErrorMessage)
-	}
-	if fakePublisher.calls != 1 {
-		t.Fatalf("expected one publish call, got %d", fakePublisher.calls)
+	if fakePublisher.published[0].EventID != "outcome-event-1" {
+		t.Fatalf("unexpected published payload: %+v", fakePublisher.published[0])
 	}
 }
 
-func TestBuildPrintJobCommandHandlerCachesExecutionOnPublishFailure(t *testing.T) {
+func TestBuildPrintJobCommandHandlerReturnsNilWhenOutcomeQueuedButPublishFails(t *testing.T) {
 	fakeExecutor := &captureExecutor{
 		result: jobexec.Result{
 			Outcome: jobexec.OutcomePrinted,
 		},
 	}
 	fakePublisher := &captureOutcomePublisher{
-		errors: []error{
-			errors.New("publish failed"),
-			nil,
+		payload: mqttstatus.PrintJobOutcomePayload{
+			SchemaVersion: "1.0.0",
+			Type:          "printed",
+			EventID:       "outcome-event-2",
+			TraceID:       "trace-2",
+			JobID:         "job-2",
+			PrinterID:     "printer-01",
+			Outcome:       "printed",
+			OccurredAt:    "2026-03-05T01:00:00Z",
 		},
-		result: mqttstatus.PublishPrintJobOutcomeResult{
-			Topic: "printers/printer-01/status",
-			Payload: mqttstatus.PrintJobOutcomePayload{
-				EventID:    "outcome-event-2",
-				OccurredAt: "2026-03-05T01:00:00Z",
-			},
-		},
+		errors: []error{errors.New("broker unavailable")},
 	}
+	fakeOutbox := &captureOutcomeOutbox{}
 
-	handler := buildPrintJobCommandHandler(fakeExecutor, fakePublisher)
-	command := mqttconsume.PrintJobCommand{
-		EventID:   "event-duplicate-safe",
-		TraceID:   "trace-dup",
-		JobID:     "job-dup",
+	handler := buildPrintJobCommandHandler(fakeExecutor, fakePublisher, fakeOutbox)
+	err := handler(context.Background(), mqttconsume.PrintJobCommand{
+		EventID:   "dispatch-event-2",
+		TraceID:   "trace-2",
+		JobID:     "job-2",
 		PrinterID: "printer-01",
 		ObjectURL: "https://example.com/file.pdf",
-	}
-
-	if err := handler(context.Background(), command); err == nil {
-		t.Fatal("expected publish error on first attempt")
-	}
-
-	if err := handler(context.Background(), command); err != nil {
-		t.Fatalf("expected second attempt to succeed, got %v", err)
+	})
+	if err != nil {
+		t.Fatalf("expected nil handler error after durable queue, got %v", err)
 	}
 
 	if fakeExecutor.calls != 1 {
-		t.Fatalf("expected executor to run once, got %d calls", fakeExecutor.calls)
+		t.Fatalf("expected one executor call, got %d", fakeExecutor.calls)
 	}
-	if fakePublisher.calls != 2 {
-		t.Fatalf("expected publisher to run twice, got %d calls", fakePublisher.calls)
+	if fakeOutbox.drainCalls != 1 {
+		t.Fatalf("expected one drain call, got %d", fakeOutbox.drainCalls)
+	}
+	if len(fakeOutbox.enqueued) != 1 {
+		t.Fatalf("expected one queued payload, got %d", len(fakeOutbox.enqueued))
 	}
 }
 
-func TestBuildPrintJobCommandHandlerReturnsPublisherError(t *testing.T) {
+func TestBuildPrintJobCommandHandlerReturnsErrorWhenQueueWriteFails(t *testing.T) {
 	fakeExecutor := &captureExecutor{
-		result: jobexec.Result{Outcome: jobexec.OutcomePrinted},
+		result: jobexec.Result{
+			Outcome: jobexec.OutcomePrinted,
+		},
 	}
 	fakePublisher := &captureOutcomePublisher{
-		errors: []error{errors.New("broker unavailable")},
+		payload: mqttstatus.PrintJobOutcomePayload{
+			SchemaVersion: "1.0.0",
+			Type:          "printed",
+			EventID:       "outcome-event-3",
+			TraceID:       "trace-3",
+			JobID:         "job-3",
+			PrinterID:     "printer-01",
+			Outcome:       "printed",
+			OccurredAt:    "2026-03-05T02:00:00Z",
+		},
+	}
+	fakeOutbox := &captureOutcomeOutbox{
+		enqueueErr: errors.New("disk full"),
 	}
 
-	handler := buildPrintJobCommandHandler(fakeExecutor, fakePublisher)
+	handler := buildPrintJobCommandHandler(fakeExecutor, fakePublisher, fakeOutbox)
 	err := handler(context.Background(), mqttconsume.PrintJobCommand{
-		EventID:   "event-err",
-		TraceID:   "trace-err",
-		JobID:     "job-err",
+		EventID:   "dispatch-event-3",
+		TraceID:   "trace-3",
+		JobID:     "job-3",
 		PrinterID: "printer-01",
 		ObjectURL: "https://example.com/file.pdf",
 	})
 	if err == nil {
-		t.Fatal("expected publisher error")
+		t.Fatal("expected queue write error")
+	}
+
+	if fakeOutbox.drainCalls != 0 {
+		t.Fatalf("expected no drain attempts after enqueue failure, got %d", fakeOutbox.drainCalls)
+	}
+	if fakePublisher.publishCalls != 0 {
+		t.Fatalf("expected no publish attempts after enqueue failure, got %d", fakePublisher.publishCalls)
 	}
 }
 
@@ -158,28 +168,72 @@ func (executor *captureExecutor) Execute(_ context.Context, command jobexec.Comm
 }
 
 type captureOutcomePublisher struct {
-	input  mqttstatus.PublishPrintJobOutcomeInput
-	result mqttstatus.PublishPrintJobOutcomeResult
-	errors []error
-	calls  int
+	payload      mqttstatus.PrintJobOutcomePayload
+	buildInput   mqttstatus.PublishPrintJobOutcomeInput
+	buildCalls   int
+	publishCalls int
+	published    []mqttstatus.PrintJobOutcomePayload
+	errors       []error
 }
 
-func (publisher *captureOutcomePublisher) PublishPrintJobOutcome(
-	_ context.Context,
+func (publisher *captureOutcomePublisher) BuildPrintJobOutcomePayload(
 	input mqttstatus.PublishPrintJobOutcomeInput,
+) (mqttstatus.PrintJobOutcomePayload, error) {
+	publisher.buildCalls++
+	publisher.buildInput = input
+	return publisher.payload, nil
+}
+
+func (publisher *captureOutcomePublisher) PublishPayload(
+	_ context.Context,
+	payload mqttstatus.PrintJobOutcomePayload,
 ) (mqttstatus.PublishPrintJobOutcomeResult, error) {
-	publisher.calls++
-	publisher.input = input
+	publisher.publishCalls++
+	publisher.published = append(publisher.published, payload)
 
-	if len(publisher.errors) == 0 {
-		return publisher.result, nil
+	if len(publisher.errors) != 0 {
+		err := publisher.errors[0]
+		publisher.errors = publisher.errors[1:]
+		if err != nil {
+			return mqttstatus.PublishPrintJobOutcomeResult{}, err
+		}
 	}
 
-	err := publisher.errors[0]
-	publisher.errors = publisher.errors[1:]
-	if err != nil {
-		return mqttstatus.PublishPrintJobOutcomeResult{}, err
+	return mqttstatus.PublishPrintJobOutcomeResult{
+		Topic:   "printers/" + payload.PrinterID + "/status",
+		QoS:     1,
+		Payload: payload,
+	}, nil
+}
+
+type captureOutcomeOutbox struct {
+	enqueued   []mqttstatus.PrintJobOutcomePayload
+	enqueueErr error
+	drainCalls int
+}
+
+func (outbox *captureOutcomeOutbox) Enqueue(payload mqttstatus.PrintJobOutcomePayload) error {
+	if outbox.enqueueErr != nil {
+		return outbox.enqueueErr
 	}
 
-	return publisher.result, nil
+	outbox.enqueued = append(outbox.enqueued, payload)
+	return nil
+}
+
+func (outbox *captureOutcomeOutbox) Drain(
+	ctx context.Context,
+	publisher mqttstatus.OutcomePayloadPublisher,
+) (int, error) {
+	outbox.drainCalls++
+
+	publishedCount := 0
+	for _, payload := range outbox.enqueued {
+		if _, err := publisher.PublishPayload(ctx, payload); err != nil {
+			return publishedCount, err
+		}
+		publishedCount++
+	}
+
+	return publishedCount, nil
 }

@@ -98,7 +98,30 @@ func (publisher *Publisher) PublishPrintJobOutcome(
 	ctx context.Context,
 	input PublishPrintJobOutcomeInput,
 ) (PublishPrintJobOutcomeResult, error) {
-	payload, topic, err := publisher.buildPayload(input)
+	payload, err := publisher.BuildPrintJobOutcomePayload(input)
+	if err != nil {
+		return PublishPrintJobOutcomeResult{}, err
+	}
+
+	return publisher.PublishPayload(ctx, payload)
+}
+
+func (publisher *Publisher) BuildPrintJobOutcomePayload(
+	input PublishPrintJobOutcomeInput,
+) (PrintJobOutcomePayload, error) {
+	payload, _, err := publisher.buildPayload(input)
+	if err != nil {
+		return PrintJobOutcomePayload{}, err
+	}
+
+	return payload, nil
+}
+
+func (publisher *Publisher) PublishPayload(
+	ctx context.Context,
+	payload PrintJobOutcomePayload,
+) (PublishPrintJobOutcomeResult, error) {
+	topic, err := validatePrintJobOutcomePayload(payload)
 	if err != nil {
 		return PublishPrintJobOutcomeResult{}, err
 	}
@@ -185,6 +208,54 @@ func (publisher *Publisher) buildPayload(input PublishPrintJobOutcomeInput) (Pri
 	}
 
 	return payload, topic, nil
+}
+
+func validatePrintJobOutcomePayload(payload PrintJobOutcomePayload) (string, error) {
+	if !schemaVersionPattern.MatchString(strings.TrimSpace(payload.SchemaVersion)) {
+		return "", errors.New("schemaVersion must match major version 1 semver format")
+	}
+	if strings.TrimSpace(payload.EventID) == "" {
+		return "", errors.New("eventId is required")
+	}
+	if strings.TrimSpace(payload.TraceID) == "" {
+		return "", errors.New("traceId is required")
+	}
+	if strings.TrimSpace(payload.JobID) == "" {
+		return "", errors.New("jobId is required")
+	}
+	if strings.TrimSpace(payload.PrinterID) == "" {
+		return "", errors.New("printerId is required")
+	}
+	if strings.TrimSpace(payload.Outcome) != strings.TrimSpace(payload.Type) {
+		return "", errors.New("outcome must match type")
+	}
+	if strings.TrimSpace(payload.Type) != string(jobexec.OutcomePrinted) &&
+		strings.TrimSpace(payload.Type) != string(jobexec.OutcomeFailed) {
+		return "", errors.New("type must be printed or failed")
+	}
+	if strings.TrimSpace(payload.OccurredAt) == "" {
+		return "", errors.New("occurredAt is required")
+	}
+	if _, err := time.Parse(time.RFC3339, payload.OccurredAt); err != nil {
+		if _, secondErr := time.Parse(time.RFC3339Nano, payload.OccurredAt); secondErr != nil {
+			return "", errors.New("occurredAt must be a valid RFC3339 timestamp")
+		}
+	}
+	if payload.Type == string(jobexec.OutcomeFailed) {
+		if strings.TrimSpace(payload.ErrorCode) == "" {
+			return "", errors.New("errorCode is required for failed outcomes")
+		}
+		if strings.TrimSpace(payload.ErrorMessage) == "" {
+			return "", errors.New("errorMessage is required for failed outcomes")
+		}
+	}
+
+	topic, err := mqttconsume.PrinterStatusTopic(payload.PrinterID)
+	if err != nil {
+		return "", err
+	}
+
+	return topic, nil
 }
 
 func defaultCreateEventID() string {

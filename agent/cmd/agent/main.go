@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 
 	"github.com/officialdavidtaylor/leftover-label-printer/agent/internal/config"
@@ -78,13 +77,25 @@ func main() {
 		log.Fatalf("build mqtt status publisher: %v", err)
 	}
 
+	statusOutbox, err := mqttstatus.NewFileOutbox(cfg.SpoolDir)
+	if err != nil {
+		log.Fatalf("build mqtt status outbox: %v", err)
+	}
+
+	publishedCount, err := statusOutbox.Drain(ctx, statusPublisher)
+	if err != nil {
+		log.Printf("status outbox drain deferred (error=%v)", err)
+	} else if publishedCount > 0 {
+		log.Printf("status outbox drained pending outcomes (count=%d)", publishedCount)
+	}
+
 	log.Printf("agent mqtt consumer starting (printer_id=%s broker=%s)", cfg.PrinterID, cfg.MQTTBrokerURL)
 
 	err = mqttconsume.ConsumeLoop(ctx, mqttconsume.Options{
 		PrinterID: cfg.PrinterID,
 		Client:    client,
 		Logger:    stdlibConsumeLogger{},
-		OnCommand: buildPrintJobCommandHandler(commandExecutor, statusPublisher),
+		OnCommand: buildPrintJobCommandHandler(commandExecutor, statusPublisher, statusOutbox),
 	})
 	if err != nil {
 		log.Fatalf("consume loop failed: %v", err)
@@ -98,59 +109,37 @@ type printCommandExecutor interface {
 }
 
 type printOutcomePublisher interface {
-	PublishPrintJobOutcome(
-		ctx context.Context,
-		input mqttstatus.PublishPrintJobOutcomeInput,
-	) (mqttstatus.PublishPrintJobOutcomeResult, error)
+	mqttstatus.OutcomePayloadPublisher
+	BuildPrintJobOutcomePayload(input mqttstatus.PublishPrintJobOutcomeInput) (mqttstatus.PrintJobOutcomePayload, error)
 }
 
-const maxCachedExecutionResults = 2048
+type printOutcomeOutbox interface {
+	Enqueue(payload mqttstatus.PrintJobOutcomePayload) error
+	Drain(ctx context.Context, publisher mqttstatus.OutcomePayloadPublisher) (int, error)
+}
 
 func buildPrintJobCommandHandler(
 	executor printCommandExecutor,
 	outcomePublisher printOutcomePublisher,
+	outcomeOutbox printOutcomeOutbox,
 ) func(context.Context, mqttconsume.PrintJobCommand) error {
-	var (
-		mu            sync.Mutex
-		cachedResults = make(map[string]jobexec.Result)
-		cacheOrder    []string
-	)
-
 	return func(ctx context.Context, command mqttconsume.PrintJobCommand) error {
 		if outcomePublisher == nil {
 			return errors.New("print outcome publisher is required")
 		}
-
-		mu.Lock()
-		result, hasCachedResult := cachedResults[command.EventID]
-		mu.Unlock()
-		if !hasCachedResult {
-			result = executor.Execute(ctx, jobexec.Command{
-				EventID:   command.EventID,
-				TraceID:   command.TraceID,
-				JobID:     command.JobID,
-				PrinterID: command.PrinterID,
-				ObjectURL: command.ObjectURL,
-			})
-
-			mu.Lock()
-			if len(cachedResults) >= maxCachedExecutionResults {
-				for len(cacheOrder) > 0 {
-					oldestEventID := cacheOrder[0]
-					cacheOrder = cacheOrder[1:]
-
-					if _, exists := cachedResults[oldestEventID]; exists {
-						delete(cachedResults, oldestEventID)
-						break
-					}
-				}
-			}
-			cachedResults[command.EventID] = result
-			cacheOrder = append(cacheOrder, command.EventID)
-			mu.Unlock()
+		if outcomeOutbox == nil {
+			return errors.New("print outcome outbox is required")
 		}
 
-		publishResult, err := outcomePublisher.PublishPrintJobOutcome(ctx, mqttstatus.PublishPrintJobOutcomeInput{
+		result := executor.Execute(ctx, jobexec.Command{
+			EventID:   command.EventID,
+			TraceID:   command.TraceID,
+			JobID:     command.JobID,
+			PrinterID: command.PrinterID,
+			ObjectURL: command.ObjectURL,
+		})
+
+		payload, err := outcomePublisher.BuildPrintJobOutcomePayload(mqttstatus.PublishPrintJobOutcomeInput{
 			TraceID:      command.TraceID,
 			JobID:        command.JobID,
 			PrinterID:    command.PrinterID,
@@ -159,35 +148,41 @@ func buildPrintJobCommandHandler(
 			ErrorMessage: result.ErrorMessage,
 		})
 		if err != nil {
+			return err
+		}
+
+		if err := outcomeOutbox.Enqueue(payload); err != nil {
+			return err
+		}
+
+		publishedCount, err := outcomeOutbox.Drain(ctx, outcomePublisher)
+		if err != nil {
 			log.Printf(
-				"print outcome publish failed (printer_id=%s job_id=%s dispatch_event_id=%s trace_id=%s outcome=%s error=%v)",
+				"print command queued terminal outcome for retry (printer_id=%s job_id=%s dispatch_event_id=%s outcome_event_id=%s trace_id=%s outcome=%s error=%v)",
 				command.PrinterID,
 				command.JobID,
 				command.EventID,
+				payload.EventID,
 				command.TraceID,
 				result.Outcome,
 				err,
 			)
-			return err
+			return nil
 		}
 
-		mu.Lock()
-		delete(cachedResults, command.EventID)
-		mu.Unlock()
-
 		log.Printf(
-			"print command handled (printer_id=%s job_id=%s dispatch_event_id=%s outcome_event_id=%s trace_id=%s outcome=%s occurred_at=%s error_code=%s error_message=%q lp_output=%q topic=%s)",
+			"print command handled (printer_id=%s job_id=%s dispatch_event_id=%s outcome_event_id=%s trace_id=%s outcome=%s occurred_at=%s error_code=%s error_message=%q lp_output=%q published_count=%d)",
 			command.PrinterID,
 			command.JobID,
 			command.EventID,
-			publishResult.Payload.EventID,
+			payload.EventID,
 			command.TraceID,
 			result.Outcome,
-			publishResult.Payload.OccurredAt,
+			payload.OccurredAt,
 			result.ErrorCode,
 			result.ErrorMessage,
 			result.LPOutput,
-			publishResult.Topic,
+			publishedCount,
 		)
 
 		return nil
