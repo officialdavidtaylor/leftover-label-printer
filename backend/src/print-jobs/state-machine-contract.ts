@@ -73,7 +73,7 @@ type TransitionMachineEvent = {
 
 const TERMINAL_STATES = new Set<PrintJobState>(['printed', 'failed']);
 
-const printJobStateMachine = createMachine<Record<string, never>, TransitionMachineEvent>(
+const printJobStateMachine = createMachine(
   {
     id: 'printJobLifecycle',
     initial: 'pending',

@@ -33,6 +33,17 @@ jobs:
           go-version-file: agent/go.mod
           cache-dependency-path: agent/go.mod
 
+      - name: Setup Node (backend)
+        if: matrix.service == 'backend'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies (backend)
+        if: matrix.service == 'backend'
+        run: npm ci
+
       - name: Lint (${{ matrix.service }})
         run: make lint-${{ matrix.service }}
 
@@ -98,7 +109,12 @@ jobs:
 
       - name: Build ${{ matrix.service }} image
         run: |
+          if [ "${{ matrix.service }}" = "backend" ]; then
+            CONTEXT="."
+          else
+            CONTEXT="${{ matrix.service }}"
+          fi
           docker build \
             --file ${{ matrix.service }}/Dockerfile \
             --tag leftover-label-printer/${{ matrix.service }}:ci-${{ github.sha }} \
-            ${{ matrix.service }}
+            $CONTEXT
