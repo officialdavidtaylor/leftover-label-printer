@@ -54,7 +54,7 @@ describe('printer-status-consumer', () => {
     expect(store.events.get('job-123')?.map((event) => event.type)).toEqual(['pending', 'printed']);
   });
 
-  it('accepts legacy job_outcome payloads while USE-36 is still converging', async () => {
+  it('accepts legacy failed job_outcome payloads while USE-36 is still converging', async () => {
     const store = new InMemoryPrinterStatusStore(
       [
         {
@@ -96,6 +96,43 @@ describe('printer-status-consumer', () => {
       errorCode: 'lp_failed',
       errorMessage: 'lp exited 1',
     });
+  });
+
+  it('rejects legacy printed job_outcome payloads until AG-06 definitive events are available', async () => {
+    const store = new InMemoryPrinterStatusStore(
+      [
+        {
+          jobId: 'job-legacy-printed',
+          state: 'dispatched',
+          printerId: 'printer-2',
+        },
+      ],
+      []
+    );
+
+    const result = await consumePrinterStatusEvent(
+      {
+        topic: 'printers/printer-2/status',
+        payload: {
+          schemaVersion: '1.0.0',
+          type: 'job_outcome',
+          eventId: 'event-printed-legacy',
+          traceId: 'trace-legacy-printed',
+          jobId: 'job-legacy-printed',
+          printerId: 'printer-2',
+          outcome: 'printed',
+          occurredAt: '2026-03-12T10:06:30.000Z',
+        },
+      },
+      { store }
+    );
+
+    expect(result).toMatchObject({
+      status: 'rejected',
+      reason: 'payload_invalid',
+      message: 'printed outcomes require definitive AG-06 terminal event types',
+    });
+    expect(store.jobs.get('job-legacy-printed')?.state).toBe('dispatched');
   });
 
   it('ignores heartbeat events', async () => {

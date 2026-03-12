@@ -23,10 +23,10 @@ const heartbeatPayloadSchema = baseStatusPayloadSchema.extend({
   uptimeSeconds: z.number().int().min(0).optional(),
 });
 
-const legacyOutcomePayloadSchema = baseStatusPayloadSchema
+const legacyFailurePayloadSchema = baseStatusPayloadSchema
   .extend({
     type: z.literal('job_outcome'),
-    outcome: terminalOutcomeSchema,
+    outcome: z.literal('failed'),
     errorCode: z.string().trim().min(1).optional(),
     errorMessage: z.string().trim().min(1).optional(),
   })
@@ -54,7 +54,7 @@ const definitiveOutcomePayloadSchema = baseStatusPayloadSchema
 const printerStatusTopicSchema = z.string().trim().regex(/^printers\/[^/]+\/status$/);
 
 type HeartbeatPayload = z.infer<typeof heartbeatPayloadSchema>;
-type LegacyOutcomePayload = z.infer<typeof legacyOutcomePayloadSchema>;
+type LegacyFailurePayload = z.infer<typeof legacyFailurePayloadSchema>;
 type DefinitiveOutcomePayload = z.infer<typeof definitiveOutcomePayloadSchema>;
 
 type ParsedTerminalOutcomePayload = {
@@ -304,11 +304,21 @@ function parsePrinterStatusPayload(
     };
   }
 
-  const legacyResult = legacyOutcomePayloadSchema.safeParse(payload);
+  const legacyResult = legacyFailurePayloadSchema.safeParse(payload);
   if (legacyResult.success) {
     return {
       status: 'accepted',
       payload: normalizeLegacyOutcomePayload(legacyResult.data),
+    };
+  }
+
+  if (isLegacyPrintedPayload(payload)) {
+    return {
+      status: 'rejected',
+      reason: 'payload_invalid',
+      message: 'printed outcomes require definitive AG-06 terminal event types',
+      jobId: getStringField(payload, 'jobId'),
+      traceId: getStringField(payload, 'traceId'),
     };
   }
 
@@ -327,7 +337,7 @@ function parsePrinterStatusPayload(
   };
 }
 
-function normalizeLegacyOutcomePayload(payload: LegacyOutcomePayload): ParsedTerminalOutcomePayload {
+function normalizeLegacyOutcomePayload(payload: LegacyFailurePayload): ParsedTerminalOutcomePayload {
   return {
     eventId: payload.eventId,
     traceId: payload.traceId,
@@ -338,6 +348,15 @@ function normalizeLegacyOutcomePayload(payload: LegacyOutcomePayload): ParsedTer
     ...(payload.errorCode ? { errorCode: payload.errorCode } : {}),
     ...(payload.errorMessage ? { errorMessage: payload.errorMessage } : {}),
   };
+}
+
+function isLegacyPrintedPayload(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object') {
+    return false;
+  }
+
+  const record = payload as Record<string, unknown>;
+  return record.type === 'job_outcome' && record.outcome === 'printed';
 }
 
 function normalizeDefinitiveOutcomePayload(payload: DefinitiveOutcomePayload): ParsedTerminalOutcomePayload {
