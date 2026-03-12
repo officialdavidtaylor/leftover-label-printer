@@ -182,6 +182,29 @@ export class MongoBackendStore implements CreatePrintJobStore, GetPrintJobStatus
     return count > 0;
   }
 
+  async appendEventAndSetState(data: {
+    jobId: string;
+    nextState: PersistedPrintJob['state'];
+    event: JobEventDocument;
+  }): Promise<void> {
+    const event = jobEventDocumentSchema.parse(data.event);
+    const updateResult = await this.collections.printJobs.updateOne(
+      { jobId: data.jobId },
+      {
+        $set: {
+          state: data.nextState,
+          updatedAt: event.occurredAt,
+        },
+      }
+    );
+
+    if (updateResult.matchedCount !== 1) {
+      throw new Error(`job not found: ${data.jobId}`);
+    }
+
+    await this.collections.jobEvents.insertOne(event);
+  }
+
   async findByJobId(jobId: string): Promise<PersistedPrintJobForStatus | null> {
     const document = await this.collections.printJobs.findOne({ jobId });
     if (!document) {

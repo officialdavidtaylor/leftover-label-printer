@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { OidcJwtVerifier } from './auth/jwt-verifier.ts';
 import { handleCreatePrintJob } from './api/create-print-job.ts';
 import { handleGetPrintJobStatus } from './api/get-print-job-status.ts';
+import { subscribeToPrinterStatusEvents, type PrinterStatusSubscriptionLogRecord } from './print-jobs/printer-status-subscription.ts';
 import { createRenderedPdfDownloadUrl } from './print-jobs/rendered-pdf-download-url.ts';
 import { uploadRenderedPdfAndPersistMetadata } from './print-jobs/rendered-pdf-storage.ts';
 import { renderPdfTemplate } from './rendering/pdf-renderer.ts';
@@ -59,6 +60,12 @@ const authVerifier = new OidcJwtVerifier({
   issuerUrl: config.oidcIssuerUrl,
   audience: config.oidcAudience,
   rolesClaim: config.oidcRolesClaim,
+});
+
+await subscribeToPrinterStatusEvents({
+  client: mqttClient,
+  store,
+  onLog: (entry) => log(logLevelForPrinterStatusEntry(entry), entry.event, entry),
 });
 
 const server = createServer(async (request, response) => {
@@ -236,6 +243,26 @@ function toErrorMessage(error: unknown): string {
   }
 
   return 'unknown_error';
+}
+
+function logLevelForPrinterStatusEntry(entry: PrinterStatusSubscriptionLogRecord): 'info' | 'warn' | 'error' {
+  if (entry.event === 'printer_status_subscription') {
+    if (entry.result === 'subscribed') {
+      return 'info';
+    }
+
+    if (entry.result === 'payload_invalid') {
+      return 'warn';
+    }
+
+    return 'error';
+  }
+
+  if (entry.result === 'accepted' || entry.result === 'ignored') {
+    return 'info';
+  }
+
+  return 'warn';
 }
 
 async function shutdown(): Promise<void> {
