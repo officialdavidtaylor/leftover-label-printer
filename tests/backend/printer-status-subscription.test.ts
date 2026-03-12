@@ -103,6 +103,51 @@ describe('printer-status-subscription', () => {
       },
     ]);
   });
+
+  it('logs consume failures instead of leaking unhandled message rejections', async () => {
+    const client = new FakeSubscriberClient();
+    const store = new ThrowingPrinterStatusStore();
+    const logs: Array<{ event: string; result: string; message?: string }> = [];
+
+    await subscribeToPrinterStatusEvents({
+      client,
+      store,
+      onLog: (entry) => {
+        if (entry.event === 'printer_status_subscription') {
+          logs.push({
+            event: entry.event,
+            result: entry.result,
+            message: entry.message,
+          });
+        }
+      },
+    });
+
+    await client.emitMessage(
+      'printers/printer-1/status',
+      Buffer.from(
+        JSON.stringify({
+          schemaVersion: '1.0.0',
+          type: 'printed',
+          eventId: 'event-printed',
+          traceId: 'trace-123',
+          jobId: 'job-123',
+          printerId: 'printer-1',
+          outcome: 'printed',
+          occurredAt: '2026-03-12T11:00:00.000Z',
+        })
+      )
+    );
+
+    expect(
+      logs.some(
+        (entry) =>
+          entry.event === 'printer_status_subscription' &&
+          entry.result === 'consume_failed' &&
+          entry.message === 'store unavailable'
+      )
+    ).toBe(true);
+  });
 });
 
 class FakeSubscriberClient implements PrinterStatusSubscriberClient {
@@ -127,7 +172,7 @@ class FakeSubscriberClient implements PrinterStatusSubscriberClient {
     for (const listener of this.listeners) {
       listener(topic, payload);
     }
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
 }
 
@@ -172,5 +217,19 @@ class InMemoryPrinterStatusStore implements PrinterStatusStore {
     const existing = this.events.get(data.jobId) ?? [];
     existing.push(data.event);
     this.events.set(data.jobId, existing);
+  }
+}
+
+class ThrowingPrinterStatusStore implements PrinterStatusStore {
+  async findByJobId(): Promise<{ jobId: string; state: JobEventDocument['type']; printerId: string } | null> {
+    throw new Error('store unavailable');
+  }
+
+  async listEventsForJob(): Promise<JobEventDocument[]> {
+    throw new Error('store unavailable');
+  }
+
+  async appendEventAndSetState(): Promise<void> {
+    throw new Error('store unavailable');
   }
 }
