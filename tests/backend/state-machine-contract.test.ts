@@ -21,8 +21,9 @@ describe('state-machine-contract', () => {
       attempt('pending', event('evt-1', 'backend', 'processing')),
       attempt('processing', event('evt-2', 'backend', 'dispatched')),
       attempt('processing', event('evt-3', 'backend', 'failed')),
-      attempt('dispatched', event('evt-4', 'agent', 'printed')),
-      attempt('dispatched', event('evt-5', 'agent', 'failed')),
+      attempt('dispatched', event('evt-4', 'backend', 'failed')),
+      attempt('dispatched', event('evt-5', 'agent', 'printed')),
+      attempt('dispatched', event('evt-6', 'agent', 'failed')),
     ];
 
     for (const decision of accepted) {
@@ -94,6 +95,7 @@ describe('state-machine-contract', () => {
 
     expect(sourceCanApplyTransition('processing', 'failed', 'backend')).toBe(true);
     expect(sourceCanApplyTransition('processing', 'failed', 'agent')).toBe(false);
+    expect(sourceCanApplyTransition('dispatched', 'failed', 'backend')).toBe(true);
     expect(sourceCanApplyTransition('dispatched', 'printed', 'agent')).toBe(true);
   });
 });

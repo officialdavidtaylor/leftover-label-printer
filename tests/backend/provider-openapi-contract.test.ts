@@ -336,6 +336,7 @@ function createGetDeps(overrides: {
 
 class InMemoryCreateStore {
   private readonly jobsByIdempotency = new Map<string, PersistedPrintJob>();
+  private readonly jobsById = new Map<string, PersistedPrintJob>();
 
   async findByIdempotencyKey(idempotencyKey: string): Promise<PersistedPrintJob | null> {
     return this.jobsByIdempotency.get(idempotencyKey) ?? null;
@@ -344,6 +345,22 @@ class InMemoryCreateStore {
   async insertAccepted(data: { job: PersistedPrintJob; event: JobEventDocument }): Promise<void> {
     void data.event;
     this.jobsByIdempotency.set(data.job.idempotencyKey, data.job);
+    this.jobsById.set(data.job.jobId, data.job);
+  }
+
+  async appendEventAndSetState(data: {
+    jobId: string;
+    nextState: PersistedPrintJob['state'];
+    event: JobEventDocument;
+  }): Promise<void> {
+    void data.event;
+    const job = this.jobsById.get(data.jobId);
+    if (!job) {
+      throw new Error(`job not found: ${data.jobId}`);
+    }
+
+    job.state = data.nextState;
+    job.updatedAt = data.event.occurredAt;
   }
 
   async printerExists(printerId: string): Promise<boolean> {

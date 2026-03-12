@@ -92,8 +92,11 @@ const printJobStateMachine = createMachine(
       },
       dispatched: {
         on: {
+          TO_FAILED: [
+            { target: 'failed', guard: 'isBackendSource' },
+            { target: 'failed', guard: 'isAgentSource' },
+          ],
           TO_PRINTED: { target: 'printed', guard: 'isAgentSource' },
-          TO_FAILED: { target: 'failed', guard: 'isAgentSource' },
         },
       },
       printed: {},

@@ -9,6 +9,7 @@ import {
   type CreatePrintJobDependencies,
   type PersistedPrintJob,
 } from '../../backend/src/api/create-print-job.ts';
+import type { JobEventDocument } from '../../backend/src/data/schema-contracts.ts';
 import { DuplicateIdempotencyKeyError } from '../../backend/src/print-jobs/idempotent-submission.ts';
 
 const fileDir = path.dirname(fileURLToPath(import.meta.url));
@@ -53,16 +54,17 @@ describe('create-print-job-handler', () => {
     });
 
     expect(store.jobs).toHaveLength(1);
-    expect(store.events).toHaveLength(1);
+    expect(store.events).toHaveLength(3);
     expect(store.jobs[0]).toMatchObject({
       jobId: 'job-123',
       ownerUserId: 'user-123',
       idempotencyKey: 'idem-123',
-      state: 'pending',
+      state: 'dispatched',
       printerId: 'printer-1',
       templateId: 'template-1',
       traceId: 'trace-123',
     });
+    expect(store.events.map((event) => event.type)).toEqual(['pending', 'processing', 'dispatched']);
     expect(store.events[0]).toEqual({
       eventId: 'event-123',
       jobId: 'job-123',
@@ -236,6 +238,60 @@ describe('create-print-job-handler', () => {
     await expect(response).rejects.toThrow('upload failed');
     expect(dispatchSpy.steps).toEqual(['insertAccepted', 'renderPdf', 'uploadRenderedPdf']);
     expect(dispatchSpy.publishInputs).toEqual([]);
+    expect(store.jobs[0]?.state).toBe('failed');
+    expect(store.events.map((event) => event.type)).toEqual(['pending', 'processing', 'failed']);
+    expect(store.events[2]).toMatchObject({
+      jobId: store.jobs[0]?.jobId,
+      type: 'failed',
+      source: 'backend',
+      errorCode: 'dispatch_prepare_failed',
+      errorMessage: 'upload failed',
+    });
+  });
+
+  it('records dispatched before publish and compensates to failed when publish fails', async () => {
+    const store = new InMemoryCreatePrintJobStore();
+    const dispatchSpy = createDispatchSpy();
+
+    const response = handleCreatePrintJob(
+      {
+        authorizationHeader: 'Bearer token-valid',
+        traceId: 'trace-publish-failure',
+        body: {
+          idempotencyKey: 'idem-publish-failure',
+          printerId: 'printer-1',
+          templateId: 'template-1',
+          payload: { itemName: 'Soup' },
+        },
+      },
+      createDeps({
+        store,
+        dispatchSpy,
+        commandPublisher: {
+          async publish(input) {
+            dispatchSpy.steps.push('publishPrintJobCommand');
+            dispatchSpy.publishInputs.push(input);
+            throw new Error('publish failed');
+          },
+        },
+      })
+    );
+
+    await expect(response).rejects.toThrow('publish failed');
+    expect(store.jobs[0]?.state).toBe('failed');
+    expect(store.events.map((event) => event.type)).toEqual([
+      'pending',
+      'processing',
+      'dispatched',
+      'failed',
+    ]);
+    expect(store.events[3]).toMatchObject({
+      jobId: store.jobs[0]?.jobId,
+      type: 'failed',
+      source: 'backend',
+      errorCode: 'dispatch_publish_failed',
+      errorMessage: 'publish failed',
+    });
   });
 
   it('returns 400 when payload is invalid', async () => {
@@ -537,14 +593,7 @@ function createDispatchSpy(): DispatchSpy {
 class InMemoryCreatePrintJobStore {
   private readonly jobsByIdempotencyKey = new Map<string, PersistedPrintJob>();
   readonly jobs: PersistedPrintJob[] = [];
-  readonly events: Array<{
-    eventId: string;
-    jobId: string;
-    type: 'pending';
-    source: 'backend';
-    occurredAt: string;
-    traceId: string;
-  }> = [];
+  readonly events: JobEventDocument[] = [];
   insertAttempts = 0;
   onInsertAccepted?: () => void;
 
@@ -577,14 +626,7 @@ class InMemoryCreatePrintJobStore {
 
   async insertAccepted(data: {
     job: PersistedPrintJob;
-    event: {
-      eventId: string;
-      jobId: string;
-      type: 'pending';
-      source: 'backend';
-      occurredAt: string;
-      traceId: string;
-    };
+    event: JobEventDocument;
   }): Promise<void> {
     this.insertAttempts += 1;
 
@@ -605,6 +647,21 @@ class InMemoryCreatePrintJobStore {
     this.onInsertAccepted?.();
     this.jobsByIdempotencyKey.set(data.job.idempotencyKey, data.job);
     this.jobs.push(data.job);
+    this.events.push(data.event);
+  }
+
+  async appendEventAndSetState(data: {
+    jobId: string;
+    nextState: PersistedPrintJob['state'];
+    event: JobEventDocument;
+  }): Promise<void> {
+    const job = this.jobs.find((candidate) => candidate.jobId === data.jobId);
+    if (!job) {
+      throw new Error(`job not found: ${data.jobId}`);
+    }
+
+    job.state = data.nextState;
+    job.updatedAt = data.event.occurredAt;
     this.events.push(data.event);
   }
 
