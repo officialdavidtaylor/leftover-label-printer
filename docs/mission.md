@@ -17,7 +17,7 @@ Build a secure, cloud-connected multi-printer label platform that:
 
 1. One production template rendered in Node backend.
 2. One print flow: submit -> render -> store -> dispatch -> print -> final status.
-3. Auth via authentik OIDC and backend RBAC.
+3. Auth via Keycloak OIDC and backend RBAC.
 4. Secure broker and object access.
 5. Deterministic state machine and contract tests for HTTP + MQTT.
 

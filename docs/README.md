@@ -15,7 +15,7 @@ Read these files before starting any implementation task:
 9. `docs/local-dependency-stack.md`
 10. `docs/ci.md`
 11. `docs/rbac-authorization-matrix.md`
-12. `docs/authentik-oidc-setup.md`
+12. `docs/keycloak-oidc-setup.md`
 13. `docs/jwt-verification.md`
 14. `docs/openapi-versioning-policy.md`
 15. `docs/asyncapi-versioning-policy.md`

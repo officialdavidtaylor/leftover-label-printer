@@ -83,99 +83,24 @@ services:
       retries: 12
       start_period: 20s
 
-  postgres:
-    image: postgres:16-alpine
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5.2
     restart: unless-stopped
-    environment:
-      POSTGRES_DB: authentik
-      POSTGRES_USER: authentik
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-authentik}
-    volumes:
-      - authentik_postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - pg_isready -U authentik -d authentik
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 20s
-
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    command: redis-server --appendonly yes
-    volumes:
-      - authentik_redis_data:/data
-    healthcheck:
-      test:
-        - CMD
-        - redis-cli
-        - ping
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 10s
-
-  authentik-server:
-    image: ghcr.io/goauthentik/server:latest
-    restart: unless-stopped
-    command: server
+    command:
+      - start-dev
+      - --http-port=8080
     ports:
-      - "9000:9000"
-      - "9443:9443"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - "9000:8080"
     environment:
-      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-local-dev-not-for-production}
-      AUTHENTIK_REDIS__HOST: redis
-      AUTHENTIK_POSTGRESQL__HOST: postgres
-      AUTHENTIK_POSTGRESQL__USER: authentik
-      AUTHENTIK_POSTGRESQL__NAME: authentik
-      AUTHENTIK_POSTGRESQL__PASSWORD: ${POSTGRES_PASSWORD:-authentik}
-      AUTHENTIK_BOOTSTRAP_EMAIL: ${AUTHENTIK_BOOTSTRAP_EMAIL:-admin@example.com}
-      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:-changeme}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-changeme}
+      KC_HTTP_PORT: 8080
     volumes:
-      - authentik_media:/media
-      - authentik_custom_templates:/templates
+      - keycloak_data:/opt/keycloak/data
     healthcheck:
       test:
         - CMD-SHELL
-        - ak healthcheck
-      interval: 10s
-      timeout: 5s
-      retries: 18
-      start_period: 30s
-
-  authentik-worker:
-    image: ghcr.io/goauthentik/server:latest
-    restart: unless-stopped
-    command: worker
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-local-dev-not-for-production}
-      AUTHENTIK_REDIS__HOST: redis
-      AUTHENTIK_POSTGRESQL__HOST: postgres
-      AUTHENTIK_POSTGRESQL__USER: authentik
-      AUTHENTIK_POSTGRESQL__NAME: authentik
-      AUTHENTIK_POSTGRESQL__PASSWORD: ${POSTGRES_PASSWORD:-authentik}
-      AUTHENTIK_BOOTSTRAP_EMAIL: ${AUTHENTIK_BOOTSTRAP_EMAIL:-admin@example.com}
-      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:-changeme}
-    volumes:
-      - authentik_media:/media
-      - authentik_certs:/certs
-      - authentik_custom_templates:/templates
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - ak healthcheck
+        - curl -fsS http://localhost:8080/realms/master/.well-known/openid-configuration >/dev/null
       interval: 10s
       timeout: 5s
       retries: 18
@@ -185,8 +110,4 @@ volumes:
   mongo_data:
   emqx_data:
   minio_data:
-  authentik_postgres_data:
-  authentik_redis_data:
-  authentik_media:
-  authentik_certs:
-  authentik_custom_templates:
+  keycloak_data:

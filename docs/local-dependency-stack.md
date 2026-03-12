@@ -5,9 +5,7 @@ This stack provides local dependencies required by the architecture:
 1. MongoDB
 2. EMQX
 3. MinIO
-4. authentik
-
-Supporting services for authentik (`postgres`, `redis`) are included in the same compose file.
+4. Keycloak
 
 ## Prerequisites
 
@@ -18,6 +16,7 @@ Supporting services for authentik (`postgres`, `redis`) are included in the same
 
 1. `cp infra/.env.example infra/.env`
 2. `make -C infra up`
+3. Configure the local Keycloak realm/client settings using `docs/keycloak-oidc-setup.md`.
 
 `make -C infra up` runs `docker compose up -d --wait`, then provisions EMQX backend/agent MQTT users from `infra/.env`.
 
@@ -29,7 +28,7 @@ Supporting services for authentik (`postgres`, `redis`) are included in the same
 4. EMQX dashboard: `http://localhost:18083`
 5. MinIO API: `http://localhost:9002`
 6. MinIO console: `http://localhost:9003`
-7. authentik: `http://localhost:9000`
+7. Keycloak: `http://localhost:9000`
 
 ## Operations
 
@@ -58,7 +57,7 @@ Supporting services for authentik (`postgres`, `redis`) are included in the same
    - Run `make -C infra ps` and check `STATE`/`HEALTH`.
    - Restart with `make -C infra down && make -C infra up`.
 3. Port conflicts:
-   - Check local listeners on ports `1883`, `8883`, `18083`, `27017`, `9000`, `9002`, `9003`, `9443`.
+   - Check local listeners on ports `1883`, `8883`, `18083`, `27017`, `9000`, `9002`, `9003`.
    - Update port mappings in `infra/docker-compose.yml` if needed.
 4. Clean-slate debugging:
    - Run `make -C infra reset`.

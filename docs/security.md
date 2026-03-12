@@ -2,7 +2,7 @@
 
 ## User Authentication and Authorization
 
-1. Identity provider: self-hosted authentik with OIDC.
+1. Identity provider: self-hosted Keycloak with OIDC.
 2. Frontend auth flow: Authorization Code + PKCE.
 3. Backend token validation: issuer, audience, signature, expiry, and required claims.
    - Discovery/JWKS details: `docs/jwt-verification.md`.
