@@ -290,6 +290,44 @@ func TestProcessorDoesNotConsumeRetryBudgetOnCancellation(t *testing.T) {
 	}
 }
 
+func TestProcessorDeletesPrintedJobEvenIfShutdownArrivesAfterExecute(t *testing.T) {
+	store := mustStore(t, t.TempDir())
+	now := time.Date(2026, 3, 5, 12, 0, 0, 0, time.UTC)
+	_, _, err := store.Enqueue(buildCommand(), now)
+	if err != nil {
+		t.Fatalf("enqueue returned error: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	processor, err := NewProcessor(ProcessorConfig{
+		Store: store,
+		Executor: fakeExecutor{execute: func(_ context.Context, _ jobexec.Command) jobexec.Result {
+			cancel()
+			return jobexec.Result{
+				Outcome:  jobexec.OutcomePrinted,
+				LPOutput: "request id is printer-01-42",
+			}
+		}},
+		RetryPolicy: RetryPolicy{MaxAttempts: 3, InitialDelay: time.Second, MaxDelay: time.Second, Multiplier: 2},
+		Now:         func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("new processor returned error: %v", err)
+	}
+
+	processed, err := processor.ProcessReady(ctx)
+	if err != nil {
+		t.Fatalf("process ready returned error: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("expected printed job to count as processed, got %d", processed)
+	}
+
+	if _, err := os.Stat(store.pendingPath("evt-123")); !os.IsNotExist(err) {
+		t.Fatalf("expected printed job to be removed from pending queue, stat err=%v", err)
+	}
+}
+
 func TestProcessorSchedulesRetriesFromPerJobFailureTime(t *testing.T) {
 	store := mustStore(t, t.TempDir())
 	initialTime := time.Date(2026, 3, 5, 12, 0, 0, 0, time.UTC)

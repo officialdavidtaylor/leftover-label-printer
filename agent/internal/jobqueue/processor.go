@@ -98,7 +98,7 @@ func (processor *Processor) ProcessReady(ctx context.Context) (int, error) {
 		})
 		failureTime := processor.now().UTC()
 
-		if ctx.Err() != nil {
+		if result.Outcome != jobexec.OutcomePrinted && ctx.Err() != nil {
 			info(processor.logger, "queue_job_interrupted", map[string]any{
 				"eventId":   queuedJob.EventID,
 				"jobId":     queuedJob.JobID,
