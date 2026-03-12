@@ -1,6 +1,7 @@
 package jobqueue
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -144,7 +145,7 @@ func (store *Store) DeletePending(eventID string) error {
 	return fmt.Errorf("delete pending job %q: %w", normalizedEventID, err)
 }
 
-func (store *Store) WriteFailed(failedJob FailedJob) error {
+func (store *Store) MovePendingToFailed(failedJob FailedJob) error {
 	if err := validateQueuedJob(failedJob.QueuedJob); err != nil {
 		return err
 	}
@@ -154,7 +155,14 @@ func (store *Store) WriteFailed(failedJob FailedJob) error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
-	return writeJSONAtomic(store.failedPath(failedJob.EventID), failedJob)
+	pendingPath := store.pendingPath(failedJob.EventID)
+	failedPath := store.failedPath(failedJob.EventID)
+
+	if err := os.Rename(pendingPath, failedPath); err != nil {
+		return fmt.Errorf("move pending job %q to failed queue: %w", failedJob.EventID, err)
+	}
+
+	return writeJSONAtomic(failedPath, failedJob)
 }
 
 func (store *Store) ListReady(now time.Time, limit int) ([]QueuedJob, error) {
@@ -253,11 +261,11 @@ func (store *Store) listPendingLocked() ([]QueuedJob, error) {
 }
 
 func (store *Store) pendingPath(eventID string) string {
-	return filepath.Join(store.pendingDir, fmt.Sprintf("%s.json", sanitizeFilenameSegment(eventID)))
+	return filepath.Join(store.pendingDir, queueRecordFilename(eventID))
 }
 
 func (store *Store) failedPath(eventID string) string {
-	return filepath.Join(store.failedDir, fmt.Sprintf("%s.json", sanitizeFilenameSegment(eventID)))
+	return filepath.Join(store.failedDir, queueRecordFilename(eventID))
 }
 
 func writeJSONAtomic(path string, value any) error {
@@ -335,32 +343,11 @@ func pathExists(path string) (bool, error) {
 	return false, fmt.Errorf("stat %q: %w", path, err)
 }
 
-func sanitizeFilenameSegment(input string) string {
-	trimmed := strings.TrimSpace(input)
-	if trimmed == "" {
-		return "unknown"
+func queueRecordFilename(eventID string) string {
+	normalizedEventID := strings.TrimSpace(eventID)
+	if normalizedEventID == "" {
+		return "unknown.json"
 	}
 
-	var builder strings.Builder
-	for _, character := range trimmed {
-		switch {
-		case character >= 'a' && character <= 'z':
-			builder.WriteRune(character)
-		case character >= 'A' && character <= 'Z':
-			builder.WriteRune(character)
-		case character >= '0' && character <= '9':
-			builder.WriteRune(character)
-		case character == '-' || character == '_':
-			builder.WriteRune(character)
-		default:
-			builder.WriteRune('-')
-		}
-	}
-
-	sanitized := strings.Trim(builder.String(), "-")
-	if sanitized == "" {
-		return "unknown"
-	}
-
-	return sanitized
+	return fmt.Sprintf("%s.json", base64.RawURLEncoding.EncodeToString([]byte(normalizedEventID)))
 }

@@ -57,35 +57,81 @@ func TestStoreEnqueueSkipsDuplicatePendingAndFailed(t *testing.T) {
 		t.Fatal("expected second enqueue to be ignored as duplicate")
 	}
 
-	if err := store.WriteFailed(FailedJob{
-		QueuedJob: QueuedJob{
-			EventID:       "event-failed",
-			TraceID:       "trace-123",
-			JobID:         "job-123",
-			PrinterID:     "printer-01",
-			ObjectURL:     "https://example.com/label.pdf",
-			QueuedAt:      now,
-			NextAttemptAt: now,
-		},
-		FinalErrorCode:    "print_failed",
-		FinalErrorMessage: "lp command failed",
-		FailedAt:          now,
-	}); err != nil {
-		t.Fatalf("write failed returned error: %v", err)
-	}
-
-	_, created, err = store.Enqueue(jobexec.Command{
+	failedCommand := jobexec.Command{
 		EventID:   "event-failed",
 		TraceID:   "trace-123",
 		JobID:     "job-123",
 		PrinterID: "printer-01",
 		ObjectURL: "https://example.com/label.pdf",
-	}, now)
+	}
+	failedQueuedJob, created, err := store.Enqueue(failedCommand, now)
+	if err != nil {
+		t.Fatalf("enqueue failed command returned error: %v", err)
+	}
+	if !created {
+		t.Fatal("expected failed command to create pending record")
+	}
+
+	if err := store.MovePendingToFailed(FailedJob{
+		QueuedJob:         failedQueuedJob,
+		FinalErrorCode:    "print_failed",
+		FinalErrorMessage: "lp command failed",
+		FailedAt:          now,
+	}); err != nil {
+		t.Fatalf("move pending to failed returned error: %v", err)
+	}
+
+	_, created, err = store.Enqueue(failedCommand, now)
 	if err != nil {
 		t.Fatalf("enqueue after failed returned error: %v", err)
 	}
 	if created {
 		t.Fatal("expected failed event id to remain deduped")
+	}
+}
+
+func TestStoreUsesCollisionFreeEventIDFilenames(t *testing.T) {
+	store := mustStore(t, t.TempDir())
+	now := time.Date(2026, 3, 5, 12, 0, 0, 0, time.UTC)
+
+	_, created, err := store.Enqueue(jobexec.Command{
+		EventID:   "evt/1",
+		TraceID:   "trace-1",
+		JobID:     "job-1",
+		PrinterID: "printer-01",
+		ObjectURL: "https://example.com/1.pdf",
+	}, now)
+	if err != nil {
+		t.Fatalf("enqueue evt/1 returned error: %v", err)
+	}
+	if !created {
+		t.Fatal("expected evt/1 to create pending record")
+	}
+
+	_, created, err = store.Enqueue(jobexec.Command{
+		EventID:   "evt:1",
+		TraceID:   "trace-2",
+		JobID:     "job-2",
+		PrinterID: "printer-01",
+		ObjectURL: "https://example.com/2.pdf",
+	}, now)
+	if err != nil {
+		t.Fatalf("enqueue evt:1 returned error: %v", err)
+	}
+	if !created {
+		t.Fatal("expected evt:1 to create pending record")
+	}
+
+	if store.pendingPath("evt/1") == store.pendingPath("evt:1") {
+		t.Fatal("expected collision-free pending file paths")
+	}
+
+	readyJobs, err := store.ListReady(now, 10)
+	if err != nil {
+		t.Fatalf("list ready returned error: %v", err)
+	}
+	if len(readyJobs) != 2 {
+		t.Fatalf("expected two ready jobs, got %d", len(readyJobs))
 	}
 }
 
@@ -174,7 +220,7 @@ func TestProcessorTerminalFailureWritesDeadLetter(t *testing.T) {
 		t.Fatalf("process ready returned error: %v", err)
 	}
 
-	failedPath := filepath.Join(spoolDir, queueSubdirectory, failedSubdirectory, "evt-123.json")
+	failedPath := filepath.Join(spoolDir, queueSubdirectory, failedSubdirectory, queueRecordFilename("evt-123"))
 	payload, err := os.ReadFile(failedPath)
 	if err != nil {
 		t.Fatalf("expected failed record at %s: %v", failedPath, err)
@@ -195,6 +241,120 @@ func TestProcessorTerminalFailureWritesDeadLetter(t *testing.T) {
 	if len(readyJobs) != 0 {
 		t.Fatalf("expected pending record to be removed after terminal failure, got %d", len(readyJobs))
 	}
+
+	if _, err := os.Stat(store.pendingPath("evt-123")); !os.IsNotExist(err) {
+		t.Fatalf("expected pending record to be moved away, stat err=%v", err)
+	}
+}
+
+func TestProcessorDoesNotConsumeRetryBudgetOnCancellation(t *testing.T) {
+	store := mustStore(t, t.TempDir())
+	now := time.Date(2026, 3, 5, 12, 0, 0, 0, time.UTC)
+	_, _, err := store.Enqueue(buildCommand(), now)
+	if err != nil {
+		t.Fatalf("enqueue returned error: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	processor, err := NewProcessor(ProcessorConfig{
+		Store: store,
+		Executor: fakeExecutor{execute: func(_ context.Context, _ jobexec.Command) jobexec.Result {
+			cancel()
+			return jobexec.Result{
+				Outcome:      jobexec.OutcomeFailed,
+				ErrorCode:    "download_failed",
+				ErrorMessage: "context canceled",
+			}
+		}},
+		RetryPolicy: RetryPolicy{MaxAttempts: 3, InitialDelay: time.Second, MaxDelay: time.Second, Multiplier: 2},
+		Now:         func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("new processor returned error: %v", err)
+	}
+
+	processed, err := processor.ProcessReady(ctx)
+	if err != nil {
+		t.Fatalf("process ready returned error: %v", err)
+	}
+	if processed != 0 {
+		t.Fatalf("expected canceled attempt to leave processed count at 0, got %d", processed)
+	}
+
+	queuedJob := readPendingJob(t, store, "evt-123")
+	if queuedJob.AttemptCount != 0 {
+		t.Fatalf("expected attempt count to remain 0 after cancellation, got %d", queuedJob.AttemptCount)
+	}
+	if queuedJob.LastErrorCode != "" || queuedJob.LastErrorMessage != "" {
+		t.Fatalf("expected pending job to remain unchanged after cancellation, got code=%q message=%q", queuedJob.LastErrorCode, queuedJob.LastErrorMessage)
+	}
+}
+
+func TestProcessorSchedulesRetriesFromPerJobFailureTime(t *testing.T) {
+	store := mustStore(t, t.TempDir())
+	initialTime := time.Date(2026, 3, 5, 12, 0, 0, 0, time.UTC)
+	firstFailureTime := initialTime.Add(2 * time.Second)
+	secondFailureTime := initialTime.Add(9 * time.Second)
+
+	_, _, err := store.Enqueue(jobexec.Command{
+		EventID:   "evt-1",
+		TraceID:   "trace-1",
+		JobID:     "job-1",
+		PrinterID: "printer-01",
+		ObjectURL: "https://example.com/1.pdf",
+	}, initialTime)
+	if err != nil {
+		t.Fatalf("enqueue evt-1 returned error: %v", err)
+	}
+
+	_, _, err = store.Enqueue(jobexec.Command{
+		EventID:   "evt-2",
+		TraceID:   "trace-2",
+		JobID:     "job-2",
+		PrinterID: "printer-01",
+		ObjectURL: "https://example.com/2.pdf",
+	}, initialTime)
+	if err != nil {
+		t.Fatalf("enqueue evt-2 returned error: %v", err)
+	}
+
+	nowValues := []time.Time{initialTime, firstFailureTime, secondFailureTime}
+	nowIndex := 0
+	processor, err := NewProcessor(ProcessorConfig{
+		Store: store,
+		Executor: fakeExecutor{execute: func(_ context.Context, _ jobexec.Command) jobexec.Result {
+			return jobexec.Result{
+				Outcome:      jobexec.OutcomeFailed,
+				ErrorCode:    "print_failed",
+				ErrorMessage: "busy",
+			}
+		}},
+		RetryPolicy: RetryPolicy{MaxAttempts: 3, InitialDelay: 5 * time.Second, MaxDelay: 30 * time.Second, Multiplier: 2},
+		Now: func() time.Time {
+			value := nowValues[nowIndex]
+			if nowIndex < len(nowValues)-1 {
+				nowIndex++
+			}
+			return value
+		},
+	})
+	if err != nil {
+		t.Fatalf("new processor returned error: %v", err)
+	}
+
+	if _, err := processor.ProcessReady(context.Background()); err != nil {
+		t.Fatalf("process ready returned error: %v", err)
+	}
+
+	firstQueuedJob := readPendingJob(t, store, "evt-1")
+	if !firstQueuedJob.NextAttemptAt.Equal(firstFailureTime.Add(5 * time.Second)) {
+		t.Fatalf("expected first retry at %s, got %s", firstFailureTime.Add(5*time.Second), firstQueuedJob.NextAttemptAt)
+	}
+
+	secondQueuedJob := readPendingJob(t, store, "evt-2")
+	if !secondQueuedJob.NextAttemptAt.Equal(secondFailureTime.Add(5 * time.Second)) {
+		t.Fatalf("expected second retry at %s, got %s", secondFailureTime.Add(5*time.Second), secondQueuedJob.NextAttemptAt)
+	}
 }
 
 func mustStore(t *testing.T, spoolDir string) *Store {
@@ -206,6 +366,22 @@ func mustStore(t *testing.T, spoolDir string) *Store {
 	}
 
 	return store
+}
+
+func readPendingJob(t *testing.T, store *Store, eventID string) QueuedJob {
+	t.Helper()
+
+	payload, err := os.ReadFile(store.pendingPath(eventID))
+	if err != nil {
+		t.Fatalf("read pending job %q: %v", eventID, err)
+	}
+
+	var queuedJob QueuedJob
+	if err := json.Unmarshal(payload, &queuedJob); err != nil {
+		t.Fatalf("decode pending job %q: %v", eventID, err)
+	}
+
+	return queuedJob
 }
 
 func buildCommand() jobexec.Command {

@@ -78,8 +78,7 @@ func NewProcessor(config ProcessorConfig) (*Processor, error) {
 
 // ProcessReady executes all currently ready pending jobs up to one batch.
 func (processor *Processor) ProcessReady(ctx context.Context) (int, error) {
-	now := processor.now().UTC()
-	readyJobs, err := processor.store.ListReady(now, defaultProcessorBatchSize)
+	readyJobs, err := processor.store.ListReady(processor.now().UTC(), defaultProcessorBatchSize)
 	if err != nil {
 		return 0, err
 	}
@@ -97,6 +96,16 @@ func (processor *Processor) ProcessReady(ctx context.Context) (int, error) {
 			PrinterID: queuedJob.PrinterID,
 			ObjectURL: queuedJob.ObjectURL,
 		})
+		failureTime := processor.now().UTC()
+
+		if ctx.Err() != nil {
+			info(processor.logger, "queue_job_interrupted", map[string]any{
+				"eventId":   queuedJob.EventID,
+				"jobId":     queuedJob.JobID,
+				"printerId": queuedJob.PrinterID,
+			})
+			return processed, nil
+		}
 
 		if result.Outcome == jobexec.OutcomePrinted {
 			if err := processor.store.DeletePending(queuedJob.EventID); err != nil {
@@ -119,16 +128,13 @@ func (processor *Processor) ProcessReady(ctx context.Context) (int, error) {
 		queuedJob.LastErrorMessage = result.ErrorMessage
 
 		if attemptNumber >= processor.retryPolicy.MaxAttempts {
-			if err := processor.store.WriteFailed(FailedJob{
+			if err := processor.store.MovePendingToFailed(FailedJob{
 				QueuedJob:         queuedJob,
 				FinalErrorCode:    result.ErrorCode,
 				FinalErrorMessage: result.ErrorMessage,
 				FinalLPOutput:     result.LPOutput,
-				FailedAt:          now,
+				FailedAt:          failureTime,
 			}); err != nil {
-				return processed, err
-			}
-			if err := processor.store.DeletePending(queuedJob.EventID); err != nil {
 				return processed, err
 			}
 
@@ -147,7 +153,7 @@ func (processor *Processor) ProcessReady(ctx context.Context) (int, error) {
 		}
 
 		retryDelay := processor.retryPolicy.delayForAttempt(attemptNumber)
-		queuedJob.NextAttemptAt = now.Add(retryDelay)
+		queuedJob.NextAttemptAt = failureTime.Add(retryDelay)
 		if err := processor.store.SavePending(queuedJob); err != nil {
 			return processed, err
 		}
