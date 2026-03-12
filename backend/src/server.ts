@@ -59,7 +59,6 @@ const authVerifier = new OidcJwtVerifier({
   issuerUrl: config.oidcIssuerUrl,
   audience: config.oidcAudience,
   rolesClaim: config.oidcRolesClaim,
-  discoveryUrl: new URL('.well-known/openid-configuration', config.oidcIssuerUrl).toString(),
 });
 
 const server = createServer(async (request, response) => {
