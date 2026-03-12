@@ -13,7 +13,7 @@ export type PrinterStatusSubscriptionLogRecord =
   | PrinterStatusLogRecord
   | {
       event: 'printer_status_subscription';
-      result: 'subscribed' | 'subscribe_failed' | 'payload_invalid';
+      result: 'subscribed' | 'subscribe_failed' | 'payload_invalid' | 'consume_failed';
       topicFilter?: string;
       topic?: string;
       message?: string;
@@ -61,7 +61,14 @@ export async function subscribeToPrinterStatusEvents(deps: {
         store: deps.store,
         onLog: deps.onLog,
       }
-    );
+    ).catch((error) => {
+      deps.onLog?.({
+        event: 'printer_status_subscription',
+        result: 'consume_failed',
+        topic,
+        message: toErrorMessage(error),
+      });
+    });
   });
 }
 
@@ -116,4 +123,12 @@ function parseJsonPayload(
       message: 'printer status payload must be valid JSON',
     };
   }
+}
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim() !== '') {
+    return error.message;
+  }
+
+  return 'unknown_error';
 }
