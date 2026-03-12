@@ -8,6 +8,7 @@ Use local commands:
 - `make lint`
 - `make test`
 - `make build`
+- `npm run backend:start`
 
 Environment setup:
 
@@ -15,6 +16,7 @@ Environment setup:
 2. Fill in required values listed in `config/required-env.txt`.
 3. Keep `OIDC_ROLES_CLAIM=roles` unless a contract-breaking migration is planned across backend and clients.
 4. Validate runtime readiness with `node --experimental-strip-types ../scripts/env/validate-env.ts config/required-env.txt .env`.
+5. Start the backend service with `npm run backend:start`.
 
 Data contracts:
 
@@ -32,3 +34,9 @@ Interface contracts:
 1. HTTP API contract: `../contracts/openapi.yaml`.
 2. MQTT backend-agent contract: `../contracts/asyncapi.yaml`.
 3. MQTT versioning policy: `../docs/asyncapi-versioning-policy.md`.
+
+Runtime notes:
+
+1. The backend server starts a real HTTP process from `src/server.ts`.
+2. On startup it connects to MongoDB, ensures critical indexes, and seeds one demo printer/template when `BACKEND_BOOTSTRAP_DEMO_DATA=true`.
+3. Rendered PDFs are uploaded to the configured S3-compatible endpoint and command dispatch publishes to MQTT with QoS 1.

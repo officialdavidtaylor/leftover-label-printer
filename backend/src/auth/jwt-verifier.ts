@@ -1,4 +1,4 @@
-import { createPublicKey, verify } from 'node:crypto';
+import { createPublicKey, verify, type JsonWebKey } from 'node:crypto';
 
 import { CANONICAL_ROLES_CLAIM } from './roles.ts';
 
@@ -47,8 +47,13 @@ type DiscoveryDoc = {
   jwks_uri: string;
 };
 
+type SigningJwk = JsonWebKey & {
+  kid?: string;
+  use?: string;
+};
+
 type JwkSet = {
-  keys: JsonWebKey[];
+  keys: SigningJwk[];
 };
 
 type CachedValue<T> = {
@@ -198,7 +203,7 @@ export class OidcJwtVerifier {
     jwksUrl: string,
     kid: string | undefined,
     nowEpochMs: number
-  ): Promise<JsonWebKey | undefined> {
+  ): Promise<SigningJwk | undefined> {
     let jwks = await this.getJwks(jwksUrl, nowEpochMs, false);
     let key = findSigningKey(jwks, kid);
 
@@ -336,7 +341,7 @@ function getRequiredNumericClaim(payload: JwtPayload, claimName: string): number
   return value;
 }
 
-function findSigningKey(jwks: JwkSet, kid: string | undefined): JsonWebKey | undefined {
+function findSigningKey(jwks: JwkSet, kid: string | undefined): SigningJwk | undefined {
   const candidates = jwks.keys.filter((key) => key.kty === 'RSA' && key.use === 'sig');
   if (candidates.length === 0) {
     return undefined;

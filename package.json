@@ -7,7 +7,9 @@
     "env:test": "vitest run tests/env/validate-env.test.ts tests/infra/validate-emqx-security.test.ts",
     "contracts:test": "vitest run tests/contracts",
     "backend:test": "vitest run tests/backend",
-    "provider-contract:test": "vitest run tests/backend/provider-contract-harness.test.ts tests/backend/provider-openapi-contract.test.ts tests/backend/publisher-asyncapi-contract.test.ts"
+    "provider-contract:test": "vitest run tests/backend/provider-contract-harness.test.ts tests/backend/provider-openapi-contract.test.ts tests/backend/publisher-asyncapi-contract.test.ts",
+    "typecheck:backend": "tsc --noEmit --project tsconfig.backend.json",
+    "backend:start": "node --experimental-strip-types backend/src/server.ts"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "^12.1.0",
@@ -17,6 +19,10 @@
     "vitest": "^3.0.7"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1007.0",
+    "@aws-sdk/s3-request-presigner": "^3.1007.0",
+    "mongodb": "^7.1.0",
+    "mqtt": "^5.15.0",
     "xstate": "^5.28.0",
     "zod": "^4.3.6"
   }
