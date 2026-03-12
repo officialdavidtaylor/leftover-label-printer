@@ -81,7 +81,7 @@ export class OidcJwtVerifier {
   ) {
     this.rolesClaim = config.rolesClaim ?? CANONICAL_ROLES_CLAIM;
     this.discoveryUrl =
-      config.discoveryUrl ?? new URL('.well-known/openid-configuration', config.issuerUrl).toString();
+      config.discoveryUrl ?? buildDiscoveryUrl(config.issuerUrl);
     this.discoveryCacheTtlMs = config.discoveryCacheTtlMs ?? 300_000;
     this.jwksCacheTtlMs = config.jwksCacheTtlMs ?? 300_000;
     this.fetchImpl = deps.fetchImpl ?? fetch;
@@ -347,4 +347,9 @@ function findSigningKey(jwks: JwkSet, kid: string | undefined): JsonWebKey | und
   }
 
   return candidates.find((key) => key.kid === kid);
+}
+
+function buildDiscoveryUrl(issuerUrl: string): string {
+  const normalizedIssuerUrl = issuerUrl.endsWith('/') ? issuerUrl : `${issuerUrl}/`;
+  return new URL('.well-known/openid-configuration', normalizedIssuerUrl).toString();
 }
