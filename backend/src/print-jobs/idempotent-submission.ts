@@ -47,9 +47,12 @@ export interface PrintJobStore {
 }
 
 export class DuplicateIdempotencyKeyError extends Error {
-  constructor(readonly idempotencyKey: string) {
+  readonly idempotencyKey: string;
+
+  constructor(idempotencyKey: string) {
     super('duplicate idempotency key');
     this.name = 'DuplicateIdempotencyKeyError';
+    this.idempotencyKey = idempotencyKey;
   }
 }
 

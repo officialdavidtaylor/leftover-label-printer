@@ -22,7 +22,11 @@ export function createS3Client(config: {
 }
 
 export class S3RenderedPdfObjectStorage implements RenderedPdfObjectStorage {
-  constructor(private readonly client: S3Client) {}
+  private readonly client: S3Client;
+
+  constructor(client: S3Client) {
+    this.client = client;
+  }
 
   async putObject(input: {
     bucket: string;
@@ -54,7 +58,11 @@ export class S3RenderedPdfObjectStorage implements RenderedPdfObjectStorage {
 }
 
 export class S3RenderedPdfDownloadUrlSigner implements RenderedPdfDownloadUrlSigner {
-  constructor(private readonly client: S3Client) {}
+  private readonly client: S3Client;
+
+  constructor(client: S3Client) {
+    this.client = client;
+  }
 
   async createPresignedGetObjectUrl(input: {
     bucket: string;
