@@ -19,7 +19,7 @@ describe('get-print-job-status-handler', () => {
     const job: PersistedPrintJobForStatus = {
       jobId: 'job-123',
       ownerUserId: 'user-123',
-      state: 'processing',
+      state: 'dispatched',
       printerId: 'printer-1',
       templateId: 'template-1',
       templateVersion: 'v2',
@@ -32,6 +32,14 @@ describe('get-print-job-status-handler', () => {
         type: 'processing',
         source: 'backend',
         occurredAt: '2026-02-20T20:02:00.000Z',
+        traceId: 'trace-123',
+      },
+      {
+        eventId: 'event-3',
+        jobId: 'job-123',
+        type: 'dispatched',
+        source: 'backend',
+        occurredAt: '2026-02-20T20:03:00.000Z',
         traceId: 'trace-123',
       },
       {
@@ -70,7 +78,7 @@ describe('get-print-job-status-handler', () => {
 
     expect(response.body).toMatchObject({
       jobId: 'job-123',
-      state: 'processing',
+      state: 'dispatched',
       printerId: 'printer-1',
       templateId: 'template-1',
       templateVersion: 'v2',
@@ -79,6 +87,13 @@ describe('get-print-job-status-handler', () => {
       'event-1a',
       'event-1b',
       'event-2',
+      'event-3',
+    ]);
+    expect(response.body.events.map((event) => event.type)).toEqual([
+      'pending',
+      'pending',
+      'processing',
+      'dispatched',
     ]);
   });
 

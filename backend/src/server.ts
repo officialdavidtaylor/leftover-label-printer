@@ -146,7 +146,7 @@ async function routeRequest(
             signer: urlSigner,
           }),
         commandPublisher,
-        onLog: (entry) => log(entry.result === 'accepted' ? 'info' : 'warn', entry.event, entry),
+        onLog: (entry) => log(logLevelForCreatePrintJobEntry(entry), entry.event, entry),
       }
     );
 
@@ -243,6 +243,16 @@ function toErrorMessage(error: unknown): string {
   }
 
   return 'unknown_error';
+}
+
+function logLevelForCreatePrintJobEntry(
+  entry: Parameters<NonNullable<Parameters<typeof handleCreatePrintJob>[1]['onLog']>>[0]
+): 'info' | 'warn' {
+  if (entry.event === 'print_job_lifecycle_transition') {
+    return entry.result === 'applied' ? 'info' : 'warn';
+  }
+
+  return entry.result === 'accepted' || entry.result === 'replayed' ? 'info' : 'warn';
 }
 
 function logLevelForPrinterStatusEntry(entry: PrinterStatusSubscriptionLogRecord): 'info' | 'warn' | 'error' {

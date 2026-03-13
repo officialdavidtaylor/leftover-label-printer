@@ -8,6 +8,7 @@ import {
   handleCreatePrintJob,
   type CreatePrintJobDependencies,
   type PersistedPrintJob,
+  type SubmissionLog,
 } from '../../backend/src/api/create-print-job.ts';
 import type { JobEventDocument } from '../../backend/src/data/schema-contracts.ts';
 import { DuplicateIdempotencyKeyError } from '../../backend/src/print-jobs/idempotent-submission.ts';
@@ -19,6 +20,7 @@ describe('create-print-job-handler', () => {
   it('accepts a valid submission and persists initial job/event records', async () => {
     const store = new InMemoryCreatePrintJobStore();
     const dispatchSpy = createDispatchSpy();
+    const logEntries: SubmissionLog[] = [];
     store.onInsertAccepted = () => dispatchSpy.steps.push('insertAccepted');
 
     const response = await handleCreatePrintJob(
@@ -38,6 +40,7 @@ describe('create-print-job-handler', () => {
         createEventId: () => 'event-123',
         createCommandEventId: () => 'event-dispatch-1',
         dispatchSpy,
+        onLog: (entry) => logEntries.push(entry),
       })
     );
 
@@ -119,6 +122,33 @@ describe('create-print-job-handler', () => {
           objectUrl: 'https://objects.example.com/signed/job-123?sig=abc',
           issuedAt: '2026-02-20T20:00:00.000Z',
         },
+      },
+    ]);
+    expect(logEntries).toEqual([
+      {
+        event: 'print_job_lifecycle_transition',
+        result: 'applied',
+        traceId: 'trace-123',
+        jobId: 'job-123',
+        source: 'backend',
+        previousState: 'pending',
+        nextState: 'processing',
+      },
+      {
+        event: 'print_job_lifecycle_transition',
+        result: 'applied',
+        traceId: 'trace-123',
+        jobId: 'job-123',
+        source: 'backend',
+        previousState: 'processing',
+        nextState: 'dispatched',
+      },
+      {
+        event: 'print_job_submission',
+        result: 'accepted',
+        traceId: 'trace-123',
+        jobId: 'job-123',
+        printerId: 'printer-1',
       },
     ]);
   });
@@ -249,9 +279,10 @@ describe('create-print-job-handler', () => {
     });
   });
 
-  it('records dispatched before publish and compensates to failed when publish fails', async () => {
+  it('records a backend failed transition when publish fails before dispatch is persisted', async () => {
     const store = new InMemoryCreatePrintJobStore();
     const dispatchSpy = createDispatchSpy();
+    const logEntries: SubmissionLog[] = [];
 
     const response = handleCreatePrintJob(
       {
@@ -267,6 +298,7 @@ describe('create-print-job-handler', () => {
       createDeps({
         store,
         dispatchSpy,
+        onLog: (entry) => logEntries.push(entry),
         commandPublisher: {
           async publish(input) {
             dispatchSpy.steps.push('publishPrintJobCommand');
@@ -279,19 +311,36 @@ describe('create-print-job-handler', () => {
 
     await expect(response).rejects.toThrow('publish failed');
     expect(store.jobs[0]?.state).toBe('failed');
-    expect(store.events.map((event) => event.type)).toEqual([
-      'pending',
-      'processing',
-      'dispatched',
-      'failed',
-    ]);
-    expect(store.events[3]).toMatchObject({
+    expect(store.events.map((event) => event.type)).toEqual(['pending', 'processing', 'failed']);
+    expect(store.events[2]).toMatchObject({
       jobId: store.jobs[0]?.jobId,
       type: 'failed',
       source: 'backend',
       errorCode: 'dispatch_publish_failed',
       errorMessage: 'publish failed',
     });
+    expect(logEntries).toEqual([
+      {
+        event: 'print_job_lifecycle_transition',
+        result: 'applied',
+        traceId: 'trace-publish-failure',
+        jobId: store.jobs[0]?.jobId ?? '',
+        source: 'backend',
+        previousState: 'pending',
+        nextState: 'processing',
+      },
+      {
+        event: 'print_job_lifecycle_transition',
+        result: 'failed',
+        traceId: 'trace-publish-failure',
+        jobId: store.jobs[0]?.jobId ?? '',
+        source: 'backend',
+        previousState: 'processing',
+        nextState: 'failed',
+        errorCode: 'dispatch_publish_failed',
+        errorMessage: 'publish failed',
+      },
+    ]);
   });
 
   it('returns 400 when payload is invalid', async () => {
@@ -455,6 +504,7 @@ function createDeps(overrides: {
   uploadRenderedPdf?: CreatePrintJobDependencies['uploadRenderedPdf'];
   createRenderedPdfDownloadUrl?: CreatePrintJobDependencies['createRenderedPdfDownloadUrl'];
   commandPublisher?: CreatePrintJobDependencies['commandPublisher'];
+  onLog?: CreatePrintJobDependencies['onLog'];
 }): CreatePrintJobDependencies {
   const renderPdf =
     overrides.renderPdf ??
@@ -538,6 +588,7 @@ function createDeps(overrides: {
     createJobId: overrides.createJobId,
     createEventId: overrides.createEventId,
     createCommandEventId: overrides.createCommandEventId,
+    onLog: overrides.onLog,
   };
 }
 

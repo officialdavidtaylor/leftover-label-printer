@@ -76,13 +76,25 @@ export type CreatePrintJobAuthVerifier = {
   verifyAccessToken(token: string): Promise<VerifiedJwtContext>;
 };
 
-export type SubmissionLog = {
-  event: 'print_job_submission';
-  result: 'accepted' | 'replayed' | 'validation_failed' | 'forbidden' | 'unauthorized';
-  traceId: string;
-  jobId?: string;
-  printerId?: string;
-};
+export type SubmissionLog =
+  | {
+      event: 'print_job_submission';
+      result: 'accepted' | 'replayed' | 'validation_failed' | 'forbidden' | 'unauthorized';
+      traceId: string;
+      jobId?: string;
+      printerId?: string;
+    }
+  | {
+      event: 'print_job_lifecycle_transition';
+      result: 'applied' | 'failed';
+      traceId: string;
+      jobId: string;
+      source: 'backend';
+      previousState: PrintJobState;
+      nextState: PrintJobState;
+      errorCode?: string;
+      errorMessage?: string;
+    };
 
 export type RenderPdfForPrintJobInput = {
   templateId: string;
@@ -358,6 +370,7 @@ async function progressAcceptedPrintJob(
   deps: CreatePrintJobDependencies
 ): Promise<void> {
   let currentState = input.job.state;
+  let failureCode: 'dispatch_prepare_failed' | 'dispatch_publish_failed' = 'dispatch_prepare_failed';
 
   currentState = await appendBackendTransition(
     {
@@ -394,15 +407,8 @@ async function progressAcceptedPrintJob(
       },
     });
 
-    currentState = await appendBackendTransition(
-      {
-        job: input.job,
-        currentState,
-        targetState: 'dispatched',
-        occurredAt: timestampForLifecycleEvent(deps),
-      },
-      deps
-    );
+    const dispatchOccurredAt = timestampForLifecycleEvent(deps);
+    failureCode = 'dispatch_publish_failed';
 
     await publishPrintJobCommand(
       {
@@ -410,13 +416,23 @@ async function progressAcceptedPrintJob(
         printerId: input.job.printerId,
         traceId: input.job.traceId,
         objectUrl: downloadUrl.url,
-        issuedAt: timestampForLifecycleEvent(deps),
+        issuedAt: dispatchOccurredAt,
       },
       {
         publisher: deps.commandPublisher,
         createEventId: deps.createCommandEventId,
         now: deps.now,
       }
+    );
+
+    currentState = await appendBackendTransition(
+      {
+        job: input.job,
+        currentState,
+        targetState: 'dispatched',
+        occurredAt: dispatchOccurredAt,
+      },
+      deps
     );
   } catch (error) {
     await appendBackendFailureTransition(
@@ -425,6 +441,7 @@ async function progressAcceptedPrintJob(
         currentState,
         occurredAt: timestampForLifecycleEvent(deps),
         error,
+        failureCode,
       },
       deps
     );
@@ -474,6 +491,16 @@ async function appendBackendTransition(
     event,
   });
 
+  deps.onLog?.({
+    event: 'print_job_lifecycle_transition',
+    result: 'applied',
+    traceId: input.job.traceId,
+    jobId: input.job.jobId,
+    source: 'backend',
+    previousState: input.currentState,
+    nextState: decision.nextState,
+  });
+
   return decision.nextState;
 }
 
@@ -483,6 +510,7 @@ async function appendBackendFailureTransition(
     currentState: PrintJobState;
     occurredAt: string;
     error: unknown;
+    failureCode: 'dispatch_prepare_failed' | 'dispatch_publish_failed';
   },
   deps: CreatePrintJobDependencies
 ): Promise<void> {
@@ -506,7 +534,7 @@ async function appendBackendFailureTransition(
     return;
   }
 
-  const failureDetails = toBackendFailureDetails(input.currentState, input.error);
+  const failureDetails = toBackendFailureDetails(input.failureCode, input.error);
   const event = jobEventDocumentSchema.parse({
     eventId: decision.log.eventId,
     jobId: input.job.jobId,
@@ -523,6 +551,18 @@ async function appendBackendFailureTransition(
     nextState: decision.nextState,
     event,
   });
+
+  deps.onLog?.({
+    event: 'print_job_lifecycle_transition',
+    result: 'failed',
+    traceId: input.job.traceId,
+    jobId: input.job.jobId,
+    source: 'backend',
+    previousState: input.currentState,
+    nextState: decision.nextState,
+    errorCode: failureDetails.errorCode,
+    errorMessage: failureDetails.errorMessage,
+  });
 }
 
 function timestampForLifecycleEvent(deps: CreatePrintJobDependencies): string {
@@ -530,14 +570,13 @@ function timestampForLifecycleEvent(deps: CreatePrintJobDependencies): string {
 }
 
 function toBackendFailureDetails(
-  currentState: PrintJobState,
+  errorCode: 'dispatch_prepare_failed' | 'dispatch_publish_failed',
   error: unknown
 ): {
   errorCode: string;
   errorMessage: string;
 } {
   const errorMessage = error instanceof Error ? error.message : 'unknown error';
-  const errorCode = currentState === 'dispatched' ? 'dispatch_publish_failed' : 'dispatch_prepare_failed';
 
   return {
     errorCode,
