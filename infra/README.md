@@ -23,5 +23,6 @@ Environment setup:
 3. Validate runtime readiness with `node --experimental-strip-types ../scripts/env/validate-env.ts config/required-env.txt .env`.
 4. Validate EMQX TLS guardrails with `make validate-security`.
 5. Start local dependencies with `make up` (waits for health checks and then provisions EMQX MQTT users).
+6. Point the backend at the local single-node replica set with `MONGO_URI=mongodb://admin:changeme@localhost:27017/?authSource=admin&replicaSet=rs0` unless you have customized the compose credentials.
 
 Compose stack definition lives in `docker-compose.yml`.
