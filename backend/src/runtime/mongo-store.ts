@@ -1,4 +1,11 @@
-import { MongoClient, MongoServerError, type Collection, type Document, type MongoClientOptions } from 'mongodb';
+import {
+  MongoClient,
+  MongoServerError,
+  type ClientSession,
+  type Collection,
+  type Document,
+  type MongoClientOptions,
+} from 'mongodb';
 import { z } from 'zod';
 
 import type {
@@ -154,8 +161,10 @@ export class MongoBackendStore implements CreatePrintJobStore, GetPrintJobStatus
     const event = jobEventDocumentSchema.parse(data.event);
 
     try {
-      await this.collections.printJobs.insertOne(job);
-      await this.collections.jobEvents.insertOne(event);
+      await this.withLifecycleTransaction(async (session) => {
+        await this.collections.printJobs.insertOne(job, { session });
+        await this.collections.jobEvents.insertOne(event, { session });
+      });
     } catch (error) {
       if (isMongoDuplicateKeyError(error)) {
         throw new DuplicateIdempotencyKeyError(job.idempotencyKey);
@@ -188,21 +197,24 @@ export class MongoBackendStore implements CreatePrintJobStore, GetPrintJobStatus
     event: JobEventDocument;
   }): Promise<void> {
     const event = jobEventDocumentSchema.parse(data.event);
-    const updateResult = await this.collections.printJobs.updateOne(
-      { jobId: data.jobId },
-      {
-        $set: {
-          state: data.nextState,
-          updatedAt: event.occurredAt,
+    await this.withLifecycleTransaction(async (session) => {
+      const updateResult = await this.collections.printJobs.updateOne(
+        { jobId: data.jobId },
+        {
+          $set: {
+            state: data.nextState,
+            updatedAt: event.occurredAt,
+          },
         },
+        { session }
+      );
+
+      if (updateResult.matchedCount !== 1) {
+        throw new Error(`job not found: ${data.jobId}`);
       }
-    );
 
-    if (updateResult.matchedCount !== 1) {
-      throw new Error(`job not found: ${data.jobId}`);
-    }
-
-    await this.collections.jobEvents.insertOne(event);
+      await this.collections.jobEvents.insertOne(event, { session });
+    });
   }
 
   async findByJobId(jobId: string): Promise<PersistedPrintJobForStatus | null> {
@@ -238,6 +250,16 @@ export class MongoBackendStore implements CreatePrintJobStore, GetPrintJobStatus
         },
       }
     );
+  }
+
+  private async withLifecycleTransaction<T>(operation: (session: ClientSession) => Promise<T>): Promise<T> {
+    const session = this.collections.printJobs.db.client.startSession();
+
+    try {
+      return await session.withTransaction(async () => operation(session));
+    } finally {
+      await session.endSession();
+    }
   }
 }
 

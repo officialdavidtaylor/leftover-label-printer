@@ -356,7 +356,7 @@ function createInitialEvent(
 function toAcceptedResponse(job: PersistedPrintJob): PrintJobAcceptedResponse {
   return {
     jobId: job.jobId,
-    state: job.state,
+    state: 'pending',
     acceptedAt: job.acceptedAt,
     traceId: job.traceId,
   };

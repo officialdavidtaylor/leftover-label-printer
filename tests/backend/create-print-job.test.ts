@@ -159,7 +159,7 @@ describe('create-print-job-handler', () => {
         jobId: 'job-existing',
         ownerUserId: 'user-123',
         idempotencyKey: 'idem-dup',
-        state: 'pending',
+        state: 'dispatched',
         printerId: 'printer-1',
         templateId: 'template-1',
         payload: { itemName: 'Chili' },
@@ -276,6 +276,48 @@ describe('create-print-job-handler', () => {
       source: 'backend',
       errorCode: 'dispatch_prepare_failed',
       errorMessage: 'upload failed',
+    });
+  });
+
+  it('records a backend failed transition when PDF rendering fails', async () => {
+    const store = new InMemoryCreatePrintJobStore();
+    const dispatchSpy = createDispatchSpy();
+    store.onInsertAccepted = () => dispatchSpy.steps.push('insertAccepted');
+
+    const response = handleCreatePrintJob(
+      {
+        authorizationHeader: 'Bearer token-valid',
+        traceId: 'trace-render-failure',
+        body: {
+          idempotencyKey: 'idem-render-failure',
+          printerId: 'printer-1',
+          templateId: 'template-1',
+          payload: { itemName: 'Soup' },
+        },
+      },
+      createDeps({
+        store,
+        dispatchSpy,
+        renderPdf: async (input) => {
+          dispatchSpy.steps.push('renderPdf');
+          dispatchSpy.renderInputs.push(input);
+          throw new Error('render failed');
+        },
+      })
+    );
+
+    await expect(response).rejects.toThrow('render failed');
+    expect(dispatchSpy.steps).toEqual(['insertAccepted', 'renderPdf']);
+    expect(dispatchSpy.uploadInputs).toEqual([]);
+    expect(dispatchSpy.publishInputs).toEqual([]);
+    expect(store.jobs[0]?.state).toBe('failed');
+    expect(store.events.map((event) => event.type)).toEqual(['pending', 'processing', 'failed']);
+    expect(store.events[2]).toMatchObject({
+      jobId: store.jobs[0]?.jobId,
+      type: 'failed',
+      source: 'backend',
+      errorCode: 'dispatch_prepare_failed',
+      errorMessage: 'render failed',
     });
   });
 
