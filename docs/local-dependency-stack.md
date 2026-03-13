@@ -39,6 +39,11 @@ The dev overlay extends that base stack with:
 
 For deliberate failure-path verification, run `make -C infra smoke-dev-failed`. The mock agent treats PDFs containing the `DEV_MOCK_PRINT_FAIL_MARKER` text as a controlled failure and the smoke script expects a terminal `failed` state.
 
+## Known limitations
+
+1. The dev overlay uses a mock print agent and mock `lp` command, so it validates backend and MQTT terminal-state handling without covering real CUPS or Raspberry Pi hardware integration.
+2. `make -C infra bootstrap-dev`, `make -C infra dev-token`, `make -C infra smoke-dev`, and `make -C infra smoke-dev-failed` should be run sequentially. They all re-use Keycloak's `kcadm.sh` config file, which is lock-backed during bootstrap.
+
 ## Endpoints
 
 1. MongoDB: `mongodb://localhost:27017`
