@@ -60,6 +60,7 @@ const authVerifier = new OidcJwtVerifier({
   issuerUrl: config.oidcIssuerUrl,
   audience: config.oidcAudience,
   rolesClaim: config.oidcRolesClaim,
+  jwksUrl: config.oidcJwksUrl,
 });
 
 await subscribeToPrinterStatusEvents({

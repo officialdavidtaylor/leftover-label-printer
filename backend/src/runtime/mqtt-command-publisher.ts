@@ -29,7 +29,11 @@ export async function closeMqttClient(client: MqttClient): Promise<void> {
 }
 
 export class MqttPrintJobCommandPublisher implements DispatchPrintJobCommandPublisher {
-  constructor(private readonly client: MqttClient) {}
+  private readonly client: MqttClient;
+
+  constructor(client: MqttClient) {
+    this.client = client;
+  }
 
   async publish(input: {
     topic: string;

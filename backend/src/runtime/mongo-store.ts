@@ -68,8 +68,8 @@ export async function ensureCriticalIndexes(collections: BackendCollections): Pr
     const collection = resolveCollection(contract, collections);
     await collection.createIndex(contract.key, {
       name: contract.name,
-      unique: contract.unique,
-      sparse: contract.sparse,
+      ...(contract.unique !== undefined ? { unique: contract.unique } : {}),
+      ...(contract.sparse !== undefined ? { sparse: contract.sparse } : {}),
     });
   }
 }
@@ -102,17 +102,18 @@ export async function seedDemoData(
     createdAt: nowIso,
     updatedAt: nowIso,
   });
+  const { createdAt: printerCreatedAt, ...printerUpsertFields } = printer;
 
   await collections.printers.updateOne(
     { printerId: input.printerId },
     {
       $set: {
-        ...printer,
+        ...printerUpsertFields,
         updatedAt: nowIso,
         lastSeenAt: nowIso,
       },
       $setOnInsert: {
-        createdAt: nowIso,
+        createdAt: printerCreatedAt,
       },
     },
     { upsert: true }
@@ -132,16 +133,17 @@ export async function seedDemoData(
     createdAt: nowIso,
     updatedAt: nowIso,
   });
+  const { createdAt: templateCreatedAt, ...templateUpsertFields } = template;
 
   await collections.templates.updateOne(
     { templateId: input.templateId, version: input.templateVersion },
     {
       $set: {
-        ...template,
+        ...templateUpsertFields,
         updatedAt: nowIso,
       },
       $setOnInsert: {
-        createdAt: nowIso,
+        createdAt: templateCreatedAt,
       },
     },
     { upsert: true }
@@ -149,7 +151,11 @@ export async function seedDemoData(
 }
 
 export class MongoBackendStore implements CreatePrintJobStore, GetPrintJobStatusStore, RenderedPdfMetadataStore {
-  constructor(private readonly collections: BackendCollections) {}
+  private readonly collections: BackendCollections;
+
+  constructor(collections: BackendCollections) {
+    this.collections = collections;
+  }
 
   async findByIdempotencyKey(idempotencyKey: string): Promise<PersistedPrintJob | null> {
     const document = await this.collections.printJobs.findOne({ idempotencyKey });

@@ -26,6 +26,7 @@ export type OidcJwtVerifierConfig = {
   issuerUrl: string;
   audience: string;
   rolesClaim?: string;
+  jwksUrl?: string;
   discoveryUrl?: string;
   discoveryCacheTtlMs?: number;
   jwksCacheTtlMs?: number;
@@ -70,6 +71,7 @@ type JwtHeader = {
 type JwtPayload = Record<string, unknown>;
 
 export class OidcJwtVerifier {
+  private readonly config: OidcJwtVerifierConfig;
   private readonly rolesClaim: string;
   private readonly discoveryUrl: string;
   private readonly discoveryCacheTtlMs: number;
@@ -81,9 +83,10 @@ export class OidcJwtVerifier {
   private jwksCache: CachedValue<JwkSet> | null = null;
 
   constructor(
-    private readonly config: OidcJwtVerifierConfig,
+    config: OidcJwtVerifierConfig,
     deps: { fetchImpl?: FetchLike; now?: () => number } = {}
   ) {
+    this.config = config;
     this.rolesClaim = config.rolesClaim ?? CANONICAL_ROLES_CLAIM;
     this.discoveryUrl =
       config.discoveryUrl ?? buildDiscoveryUrl(config.issuerUrl);
@@ -132,8 +135,8 @@ export class OidcJwtVerifier {
       throw new UnauthorizedError('missing_required_claim');
     }
 
-    const discovery = await this.getDiscovery(nowEpochMs);
-    const key = await this.getSigningKey(discovery.jwks_uri, header.kid, nowEpochMs);
+    const jwksUrl = this.config.jwksUrl ?? (await this.getDiscovery(nowEpochMs)).jwks_uri;
+    const key = await this.getSigningKey(jwksUrl, header.kid, nowEpochMs);
     if (!key) {
       throw new UnauthorizedError('invalid_signature');
     }

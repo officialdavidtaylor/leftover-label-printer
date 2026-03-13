@@ -232,6 +232,55 @@ describe('jwt-verifier', () => {
     });
   });
 
+  it('uses an explicit JWKS URL when discovery is not reachable from the verifier', async () => {
+    const key = createRsaSigningKey('key-1');
+    const issuerUrl = 'http://localhost:9000/realms/leftover-label-printer';
+    const jwksUrl = 'http://keycloak:8080/realms/leftover-label-printer/protocol/openid-connect/certs';
+    let jwksHits = 0;
+
+    const verifier = new OidcJwtVerifier(
+      {
+        issuerUrl,
+        audience: 'leftover-label-printer-api',
+        jwksUrl,
+      },
+      {
+        fetchImpl: async (input) => {
+          const url = String(input);
+          if (url !== jwksUrl) {
+            throw new Error(`unexpected fetch: ${url}`);
+          }
+
+          jwksHits += 1;
+          return new Response(JSON.stringify({ keys: [key.publicJwk] }), {
+            status: 200,
+            headers: {
+              'content-type': 'application/json',
+            },
+          });
+        },
+      }
+    );
+
+    const token = signAccessToken(
+      {
+        iss: issuerUrl,
+        aud: 'leftover-label-printer-api',
+        sub: 'user-1',
+        exp: epochSecondsFromNow(60),
+        roles: ['user'],
+      },
+      key.privateKey,
+      key.kid
+    );
+
+    const context = await verifier.verifyAccessToken(token);
+
+    expect(context.subject).toBe('user-1');
+    expect(context.roles).toEqual(['user']);
+    expect(jwksHits).toBe(1);
+  });
+
   it('uses cached discovery/JWKS and refreshes JWKS on key rotation', async () => {
     const key1 = createRsaSigningKey('key-1');
     const key2 = createRsaSigningKey('key-2');
