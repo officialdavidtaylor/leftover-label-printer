@@ -1,0 +1,98 @@
+services:
+  mongodb:
+    environment:
+      MONGO_REPLICA_SET_HOST: mongodb:27017
+
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      emqx:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    environment:
+      BACKEND_PORT: 8080
+      BACKEND_LOG_LEVEL: info
+      BACKEND_BOOTSTRAP_DEMO_DATA: "true"
+      BACKEND_BOOTSTRAP_PRINTER_ID: ${DEV_PRINTER_ID:-printer-01}
+      BACKEND_BOOTSTRAP_PRINTER_NODE_ID: ${DEV_PRINTER_ID:-printer-01}
+      BACKEND_BOOTSTRAP_PRINTER_LOCATION: ${DEV_PRINTER_LOCATION:-Local Dev Bench}
+      BACKEND_BOOTSTRAP_TEMPLATE_ID: ${DEV_TEMPLATE_ID:-label-default}
+      BACKEND_BOOTSTRAP_TEMPLATE_VERSION: ${DEV_TEMPLATE_VERSION:-v1}
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME:-admin}:${MONGO_ROOT_PASSWORD:-changeme}@mongodb:27017/?authSource=admin&replicaSet=rs0&directConnection=true
+      MONGO_DB_NAME: leftover_label_printer
+      MQTT_BROKER_URL: mqtt://emqx:1883
+      MQTT_USERNAME: ${EMQX_BACKEND_MQTT_USERNAME:-backend}
+      MQTT_PASSWORD: ${EMQX_BACKEND_MQTT_PASSWORD:-change-me-backend}
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: ${DEV_S3_REGION:-us-east-1}
+      S3_BUCKET: ${DEV_S3_BUCKET:-leftover-label-printer}
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      OIDC_ISSUER_URL: ${DEV_KEYCLOAK_BASE_URL:-http://localhost:9000}/realms/${DEV_OIDC_REALM:-leftover-label-printer}
+      OIDC_AUDIENCE: ${DEV_OIDC_AUDIENCE:-leftover-label-printer-api}
+      OIDC_JWKS_URL: http://keycloak:8080/realms/${DEV_OIDC_REALM:-leftover-label-printer}/protocol/openid-connect/certs
+      OIDC_ROLES_CLAIM: roles
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          node -e "fetch('http://127.0.0.1:8080/healthz').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  mock-agent:
+    build:
+      context: ../agent
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      emqx:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    environment:
+      AGENT_PRINTER_ID: ${DEV_PRINTER_ID:-printer-01}
+      AGENT_POLL_INTERVAL_SECONDS: 1
+      AGENT_SPOOL_DIR: /var/lib/leftover-agent/spool
+      CUPS_PRINTER_NAME: mock-printer
+      LP_COMMAND_PATH: /usr/local/bin/mock-lp
+      MQTT_BROKER_URL: mqtt://emqx:1883
+      MQTT_CLIENT_ID: ${DEV_PRINTER_ID:-printer-01}
+      MQTT_USERNAME: ${EMQX_AGENT_MQTT_USERNAME:-printer-01}
+      MQTT_PASSWORD: ${EMQX_AGENT_MQTT_PASSWORD:-change-me-agent}
+      AGENT_RETRY_MAX_ATTEMPTS: 1
+      AGENT_RETRY_INITIAL_DELAY_SECONDS: 1
+      AGENT_RETRY_MAX_DELAY_SECONDS: 1
+      AGENT_RETRY_MULTIPLIER: 1
+      BACKEND_BASE_URL: http://backend:8080
+      BACKEND_API_TOKEN: local-dev-not-used
+      AGENT_VALIDATE_ONLY: "false"
+      MOCK_PRINT_ARTIFACT_DIR: /var/lib/leftover-agent/mock-artifacts
+      MOCK_PRINT_FAIL_MARKER: ${DEV_MOCK_PRINT_FAIL_MARKER:-[mock-fail]}
+    volumes:
+      - agent_spool_data:/var/lib/leftover-agent/spool
+      - ./dev/mock-lp.sh:/usr/local/bin/mock-lp:ro
+      - ./dev-artifacts:/var/lib/leftover-agent/mock-artifacts
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pidof leftover-agent >/dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+volumes:
+  agent_spool_data:
