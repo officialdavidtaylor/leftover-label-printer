@@ -76,6 +76,57 @@ describe('provider-openapi-contract:getPrintJob', () => {
       200, 401, 403, 404,
     ]);
   });
+
+  it('returns ordered backend lifecycle events after a successful create flow', async () => {
+    const store = new InMemoryCreateStore();
+    const accepted = await handleCreatePrintJob(
+      {
+        authorizationHeader: 'Bearer token-user',
+        traceId: 'trace-create-lifecycle',
+        body: {
+          idempotencyKey: 'idem-lifecycle',
+          printerId: 'printer-1',
+          templateId: 'template-1',
+          payload: { itemName: 'Soup' },
+        },
+      },
+      createCreateDeps({
+        store,
+        nowIso: '2026-02-20T20:00:00.000Z',
+      })
+    );
+
+    expect(accepted.status).toBe(202);
+    if (accepted.status !== 202) {
+      return;
+    }
+
+    const status = await handleGetPrintJobStatus(
+      {
+        authorizationHeader: 'Bearer token-owner',
+        traceId: 'trace-read-lifecycle',
+        jobId: accepted.body.jobId,
+      },
+      createGetDeps({
+        store,
+      })
+    );
+
+    expect(status.status).toBe(200);
+    if (status.status !== 200) {
+      return;
+    }
+
+    assertJsonResponseMatchesContract({
+      contract,
+      routePath: '/v1/print-jobs/{jobId}',
+      method: 'get',
+      status: status.status,
+      body: status.body,
+    });
+    expect(status.body.state).toBe('dispatched');
+    expect(status.body.events.map((event) => event.type)).toEqual(['pending', 'processing', 'dispatched']);
+  });
 });
 
 async function runCreatePrintJobScenarios(): Promise<
@@ -239,7 +290,15 @@ async function runGetPrintJobScenarios(): Promise<
 function createCreateDeps(overrides: {
   store: InMemoryCreateStore;
   nowIso: string;
+  nowSequence?: string[];
 }): CreatePrintJobDependencies {
+  const nowSequence = overrides.nowSequence ?? [
+    overrides.nowIso,
+    '2026-02-20T20:01:00.000Z',
+    '2026-02-20T20:02:00.000Z',
+  ];
+  let nowIndex = 0;
+
   return {
     authVerifier: {
       async verifyAccessToken(token) {
@@ -292,7 +351,7 @@ function createCreateDeps(overrides: {
         return;
       },
     },
-    now: () => new Date(overrides.nowIso),
+    now: () => new Date(nowSequence[Math.min(nowIndex++, nowSequence.length - 1)]),
     createJobId: () => 'job-accepted',
     createEventId: () => 'event-accepted',
     createCommandEventId: () => 'event-dispatch',
@@ -300,7 +359,7 @@ function createCreateDeps(overrides: {
 }
 
 function createGetDeps(overrides: {
-  store: InMemoryStatusStore;
+  store: GetPrintJobStatusDependencies['store'];
 }): GetPrintJobStatusDependencies {
   return {
     authVerifier: {
@@ -337,15 +396,16 @@ function createGetDeps(overrides: {
 class InMemoryCreateStore {
   private readonly jobsByIdempotency = new Map<string, PersistedPrintJob>();
   private readonly jobsById = new Map<string, PersistedPrintJob>();
+  private readonly eventsByJobId = new Map<string, JobEventDocument[]>();
 
   async findByIdempotencyKey(idempotencyKey: string): Promise<PersistedPrintJob | null> {
     return this.jobsByIdempotency.get(idempotencyKey) ?? null;
   }
 
   async insertAccepted(data: { job: PersistedPrintJob; event: JobEventDocument }): Promise<void> {
-    void data.event;
     this.jobsByIdempotency.set(data.job.idempotencyKey, data.job);
     this.jobsById.set(data.job.jobId, data.job);
+    this.eventsByJobId.set(data.job.jobId, [data.event]);
   }
 
   async appendEventAndSetState(data: {
@@ -353,7 +413,6 @@ class InMemoryCreateStore {
     nextState: PersistedPrintJob['state'];
     event: JobEventDocument;
   }): Promise<void> {
-    void data.event;
     const job = this.jobsById.get(data.jobId);
     if (!job) {
       throw new Error(`job not found: ${data.jobId}`);
@@ -361,6 +420,9 @@ class InMemoryCreateStore {
 
     job.state = data.nextState;
     job.updatedAt = data.event.occurredAt;
+    const events = this.eventsByJobId.get(data.jobId) ?? [];
+    events.push(data.event);
+    this.eventsByJobId.set(data.jobId, events);
   }
 
   async printerExists(printerId: string): Promise<boolean> {
@@ -370,6 +432,26 @@ class InMemoryCreateStore {
   async templateExists(templateId: string, templateVersion?: string): Promise<boolean> {
     void templateVersion;
     return templateId === 'template-1';
+  }
+
+  async findByJobId(jobId: string): Promise<PersistedPrintJobForStatus | null> {
+    const job = this.jobsById.get(jobId);
+    if (!job) {
+      return null;
+    }
+
+    return {
+      jobId: job.jobId,
+      ownerUserId: job.ownerUserId,
+      state: job.state,
+      printerId: job.printerId,
+      templateId: job.templateId,
+      ...(job.templateVersion ? { templateVersion: job.templateVersion } : {}),
+    };
+  }
+
+  async listEventsForJob(jobId: string): Promise<JobEventDocument[]> {
+    return this.eventsByJobId.get(jobId) ?? [];
   }
 }
 
