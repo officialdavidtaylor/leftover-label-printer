@@ -4,13 +4,9 @@ services:
   mongodb:
     image: mongo:7.0
     restart: unless-stopped
-    command:
+    entrypoint:
       - /bin/sh
-      - -c
-      - >
-        cp /etc/mongo-keyfile-source/keyfile /tmp/mongo-keyfile &&
-        chmod 600 /tmp/mongo-keyfile &&
-        exec mongod --replSet rs0 --bind_ip_all --keyFile /tmp/mongo-keyfile
+      - /docker-entrypoint-init-replset.sh
     ports:
       - "27017:27017"
     environment:
@@ -20,6 +16,7 @@ services:
     volumes:
       - mongo_data:/data/db
       - ./mongo/keyfile:/etc/mongo-keyfile-source/keyfile:ro
+      - ./mongo/docker-entrypoint-init-replset.sh:/docker-entrypoint-init-replset.sh:ro
     healthcheck:
       test:
         - CMD-SHELL
