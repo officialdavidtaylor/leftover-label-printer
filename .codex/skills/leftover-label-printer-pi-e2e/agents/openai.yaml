@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pi Print E2E"
+  short_description: "Run the Raspberry Pi print E2E flow"
+  default_prompt: "Use $leftover-label-printer-pi-e2e to run the Raspberry Pi hardware end-to-end print test for this repo."
