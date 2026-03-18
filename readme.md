@@ -34,13 +34,16 @@ flowchart LR
   S3 -->|"6. download PDF from objectUrl"| AGENT
   AGENT -->|"7. print via CUPS"| PRINTER
   AGENT -.->|"8. publish printed / failed"| MQ
-  API -.->|"9. poll status + show terminal state"| PWA
+  MQ -.->|"9. backend consumes printer status"| API
+  API -->|"10. apply terminal state transition"| DB
+  API -.->|"11. poll status + show terminal state"| PWA
 ```
 
 1. The React PWA submits a print job to the backend with an OIDC bearer token.
 2. The backend validates the request, stores job state in MongoDB, renders the label PDF, and uploads it to object storage.
 3. The backend publishes a printer-specific MQTT command through EMQX so the target Raspberry Pi agent can pick it up.
-4. The edge agent downloads the rendered PDF, prints it through CUPS to the DYMO 450, then publishes a terminal `printed` or `failed` status back to the backend.
+4. The edge agent downloads the rendered PDF, prints it through CUPS to the DYMO 450, then publishes a terminal `printed` or `failed` status through EMQX.
+5. The backend consumes that printer status event, applies the guarded terminal state transition, and persists the final job state before the PWA shows it to the user.
 
 Mermaid source lives in this README. The earlier Excalidraw asset is still available at `docs/assets/how-it-works.excalidraw.elements.json` if we want to reuse or export it later.
 
