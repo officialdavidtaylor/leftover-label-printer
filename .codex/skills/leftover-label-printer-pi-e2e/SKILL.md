@@ -11,6 +11,7 @@ Run the backend and infra locally, run the agent on the Raspberry Pi over SSH, s
 
 Read [references/pi-hardware-loop.md](references/pi-hardware-loop.md) before the first execution in a turn. Use [scripts/submit_and_wait.ts](scripts/submit_and_wait.ts) for the job submission and terminal-state polling step instead of rewriting that logic inline.
 
+For the UI-driven variant that triggers the print through the frontend with Playwright MCP, use `.codex/skills/leftover-label-printer-pi-e2e-playwright/`.
 ## Workflow
 
 1. Work from repo root and keep product code unchanged unless the user explicitly asks for repo edits.

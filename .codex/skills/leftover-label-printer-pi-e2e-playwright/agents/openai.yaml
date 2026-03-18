@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pi Print E2E (UI)"
+  short_description: "Run the Pi print E2E flow through the frontend UI"
+  default_prompt: "Use $leftover-label-printer-pi-e2e-playwright to run the Raspberry Pi hardware end-to-end print test through the frontend UI for this repo."
