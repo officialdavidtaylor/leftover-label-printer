@@ -21,10 +21,12 @@ const envSchema = z
     DEV_OIDC_REALM: z.string().trim().min(1).default('leftover-label-printer'),
     DEV_OIDC_AUDIENCE: z.string().trim().min(1).default('leftover-label-printer-api'),
     DEV_OIDC_DEV_CLIENT_ID: z.string().trim().min(1).default('leftover-label-printer-dev-cli'),
+    DEV_OIDC_PWA_CLIENT_ID: z.string().trim().min(1).default('leftover-label-printer-pwa'),
     DEV_OIDC_DEV_USERNAME: z.string().trim().min(1).default('dev-user'),
     DEV_OIDC_DEV_PASSWORD: z.string().trim().min(1).default('dev-password'),
     DEV_OIDC_DEV_ROLES: z.string().trim().min(1).default('user'),
     DEV_BACKEND_BASE_URL: z.string().trim().url().default('http://localhost:8080'),
+    DEV_FRONTEND_BASE_URL: z.string().trim().url().default('http://localhost:3000'),
     DEV_PRINTER_ID: z.string().trim().min(1).default('printer-01'),
     DEV_PRINTER_LOCATION: z.string().trim().min(1).default('Local Dev Bench'),
     DEV_TEMPLATE_ID: z.string().trim().min(1).default('label-default'),
@@ -68,10 +70,12 @@ export type LocalDevConfig = {
   oidcIssuerUrl: string;
   oidcAudience: string;
   devClientId: string;
+  pwaClientId: string;
   devUsername: string;
   devPassword: string;
   devRoles: Array<z.infer<typeof canonicalRoleSchema>>;
   backendBaseUrl: string;
+  frontendBaseUrl: string;
   printerId: string;
   printerLocation: string;
   templateId: string;
@@ -174,10 +178,12 @@ export function parseLocalDevConfig(envText: string, envFilePath: string): Local
     oidcIssuerUrl: `${withoutTrailingSlash(parsed.data.DEV_KEYCLOAK_BASE_URL)}/realms/${parsed.data.DEV_OIDC_REALM}`,
     oidcAudience: parsed.data.DEV_OIDC_AUDIENCE,
     devClientId: parsed.data.DEV_OIDC_DEV_CLIENT_ID,
+    pwaClientId: parsed.data.DEV_OIDC_PWA_CLIENT_ID,
     devUsername: parsed.data.DEV_OIDC_DEV_USERNAME,
     devPassword: parsed.data.DEV_OIDC_DEV_PASSWORD,
     devRoles,
     backendBaseUrl: withoutTrailingSlash(parsed.data.DEV_BACKEND_BASE_URL),
+    frontendBaseUrl: withoutTrailingSlash(parsed.data.DEV_FRONTEND_BASE_URL),
     printerId: parsed.data.DEV_PRINTER_ID,
     printerLocation: parsed.data.DEV_PRINTER_LOCATION,
     templateId: parsed.data.DEV_TEMPLATE_ID,
@@ -304,8 +310,11 @@ async function ensureKeycloakRealm(config: LocalDevConfig, logger: Logger): Prom
   ensureRealmRole(config, 'sysadmin', logger);
 
   const client = ensureDevClient(config, logger);
+  const pwaClient = ensurePwaClient(config, logger);
   ensureClientRole(config, client.id, 'user', logger);
   ensureClientRole(config, client.id, 'sysadmin', logger);
+  ensureClientRole(config, pwaClient.id, 'user', logger);
+  ensureClientRole(config, pwaClient.id, 'sysadmin', logger);
   ensureProtocolMapper(config, client.id, {
     name: 'canonical-roles',
     protocol: 'openid-connect',
@@ -331,11 +340,37 @@ async function ensureKeycloakRealm(config: LocalDevConfig, logger: Logger): Prom
       'included.custom.audience': config.oidcAudience,
     },
   });
+  ensureProtocolMapper(config, pwaClient.id, {
+    name: 'canonical-roles',
+    protocol: 'openid-connect',
+    protocolMapper: 'oidc-usermodel-client-role-mapper',
+    config: {
+      'usermodel.clientRoleMapping.clientId': config.pwaClientId,
+      multivalued: 'true',
+      'access.token.claim': 'true',
+      'id.token.claim': 'false',
+      'userinfo.token.claim': 'false',
+      'claim.name': 'roles',
+      'jsonType.label': 'String',
+    },
+  });
+  ensureProtocolMapper(config, pwaClient.id, {
+    name: 'api-audience',
+    protocol: 'openid-connect',
+    protocolMapper: 'oidc-audience-mapper',
+    config: {
+      'access.token.claim': 'true',
+      'id.token.claim': 'false',
+      'userinfo.token.claim': 'false',
+      'included.custom.audience': config.oidcAudience,
+    },
+  });
 
   ensureDevUser(config, logger);
   ensureUserPassword(config);
   ensureUserRealmRoles(config, config.devRoles, logger);
-  ensureUserClientRoles(config, config.devRoles, logger);
+  ensureUserClientRoles(config, config.devRoles, config.devClientId, logger);
+  ensureUserClientRoles(config, config.devRoles, config.pwaClientId, logger);
 }
 
 function ensureRealmRole(config: LocalDevConfig, roleName: z.infer<typeof canonicalRoleSchema>, logger: Logger): void {
@@ -384,6 +419,45 @@ function ensureDevClient(config: LocalDevConfig, logger: Logger): KeycloakClient
   const client = getKeycloakClient(config);
   if (!client) {
     throw new Error(`infra local dev: failed to resolve Keycloak client ${config.devClientId} after create/update.`);
+  }
+
+  return client;
+}
+
+function ensurePwaClient(config: LocalDevConfig, logger: Logger): KeycloakClientRepresentation {
+  const clientPayload = {
+    clientId: config.pwaClientId,
+    name: 'Leftover Label Printer Local Dev PWA',
+    enabled: true,
+    protocol: 'openid-connect',
+    publicClient: true,
+    standardFlowEnabled: true,
+    directAccessGrantsEnabled: false,
+    serviceAccountsEnabled: false,
+    fullScopeAllowed: false,
+    redirectUris: [`${config.frontendBaseUrl}/*`],
+    webOrigins: [config.frontendBaseUrl],
+  };
+
+  const existingClient = getKeycloakClient(config, config.pwaClientId);
+  if (!existingClient) {
+    runKeycloakAdmin(config, ['create', 'clients', '-r', config.oidcRealm, '-f', '/dev/stdin'], clientPayload);
+    logger(`infra local dev: created Keycloak client ${config.pwaClientId}.`);
+  } else {
+    runKeycloakAdmin(
+      config,
+      ['update', `clients/${existingClient.id}`, '-r', config.oidcRealm, '-f', '/dev/stdin'],
+      {
+        ...existingClient,
+        ...clientPayload,
+      }
+    );
+    logger(`infra local dev: ensured Keycloak client ${config.pwaClientId}.`);
+  }
+
+  const client = getKeycloakClient(config, config.pwaClientId);
+  if (!client) {
+    throw new Error(`infra local dev: failed to resolve Keycloak client ${config.pwaClientId} after create/update.`);
   }
 
   return client;
@@ -526,6 +600,7 @@ function ensureUserRealmRoles(
 function ensureUserClientRoles(
   config: LocalDevConfig,
   roles: Array<z.infer<typeof canonicalRoleSchema>>,
+  clientId: string,
   logger: Logger
 ): void {
   for (const roleName of roles) {
@@ -536,18 +611,18 @@ function ensureUserClientRoles(
       '--uusername',
       config.devUsername,
       '--cclientid',
-      config.devClientId,
+      clientId,
       '--rolename',
       roleName,
     ]);
   }
 
-  logger(`infra local dev: assigned Keycloak client roles ${roles.join(', ')} to ${config.devUsername}.`);
+  logger(`infra local dev: assigned Keycloak client roles ${roles.join(', ')} on ${clientId} to ${config.devUsername}.`);
 }
 
-function getKeycloakClient(config: LocalDevConfig): KeycloakClientRepresentation | null {
+function getKeycloakClient(config: LocalDevConfig, clientId: string = config.devClientId): KeycloakClientRepresentation | null {
   const clients = parseJson<KeycloakClientRepresentation[]>(
-    runKeycloakAdmin(config, ['get', 'clients', '-r', config.oidcRealm, '-q', `clientId=${config.devClientId}`])
+    runKeycloakAdmin(config, ['get', 'clients', '-r', config.oidcRealm, '-q', `clientId=${clientId}`])
   );
 
   return clients[0] ?? null;

@@ -42,6 +42,9 @@ build/
 **/build/
 .cache/
 *.tsbuildinfo
+.react-router/
+test-results/
+playwright-report/
 
 # Go
 /bin/
