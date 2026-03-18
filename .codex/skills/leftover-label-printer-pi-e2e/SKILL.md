@@ -18,7 +18,7 @@ Read [references/pi-hardware-loop.md](references/pi-hardware-loop.md) before the
 3. Create a temporary compose override that sets backend `S3_ENDPOINT` to `http://<lan-ip>:9002` so MinIO signed URLs are reachable from the Pi.
 4. Start local Docker services without `mock-agent`, then run the existing repo bootstrap scripts for EMQX auth and local Keycloak/MinIO state.
 5. Build `agent/bin/leftover-agent-linux-arm64`.
-6. SSH and SCP with `-o IdentitiesOnly=no`. Validate backend, MinIO, MQTT, and the remote CUPS queue before submitting a job.
+6. Use the project SSH host configuration for the Pi. Validate backend, MinIO, MQTT, and the remote CUPS queue before submitting a job.
 7. Copy the binary to `~/leftover-agent-e2e/leftover-agent`, run a validate-only startup, then start the real agent in the background with logs in `~/leftover-agent-e2e/agent.log`.
 8. Use `scripts/submit_and_wait.ts` against `http://localhost:8080` to submit the live print job and wait for a terminal state.
 9. Treat success as both backend state `printed` and Pi log evidence that includes `mqtt_consumer_subscribed` plus an `lp` request id.
@@ -28,7 +28,7 @@ Read [references/pi-hardware-loop.md](references/pi-hardware-loop.md) before the
 
 1. Do not use the Pi service port `4000`.
 2. Do not start `mock-agent` for the hardware loop.
-3. Force `IdentitiesOnly=no` for SSH and SCP because the host config uses a 1Password-backed agent.
+3. Rely on the configured SSH host settings instead of checking in local environment workarounds.
 4. Request escalation when Docker, SSH, SCP, or LAN network access is blocked by the sandbox.
 5. Keep Keycloak bootstrap steps sequential with other `infra` helper commands that reuse `kcadm.sh`.
 6. In user-facing output, prefer `~` for home-directory paths.

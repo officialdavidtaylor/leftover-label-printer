@@ -95,7 +95,7 @@ Expected evidence:
 
 ```bash
 export PI_E2E_CUPS_PRINTER_NAME="${PI_E2E_CUPS_PRINTER_NAME:-dymo}"
-ssh -o IdentitiesOnly=no "$PI_E2E_SSH_HOST" "set -eu; \
+ssh "$PI_E2E_SSH_HOST" "set -eu; \
   lpstat -p '$PI_E2E_CUPS_PRINTER_NAME' >/dev/null; \
   curl -fsS 'http://${PI_E2E_LOCAL_HOST}:8080/healthz' >/dev/null; \
   curl -fsS 'http://${PI_E2E_LOCAL_HOST}:9002/minio/health/live' >/dev/null; \
@@ -111,9 +111,9 @@ Expected evidence:
 ## 6. Copy and validate the remote agent
 
 ```bash
-ssh -o IdentitiesOnly=no "$PI_E2E_SSH_HOST" "mkdir -p ~/leftover-agent-e2e/spool"
-scp -o IdentitiesOnly=no agent/bin/leftover-agent-linux-arm64 "$PI_E2E_SSH_HOST":~/leftover-agent-e2e/leftover-agent
-ssh -o IdentitiesOnly=no "$PI_E2E_SSH_HOST" "set -eu; \
+ssh "$PI_E2E_SSH_HOST" "mkdir -p ~/leftover-agent-e2e/spool"
+scp agent/bin/leftover-agent-linux-arm64 "$PI_E2E_SSH_HOST":~/leftover-agent-e2e/leftover-agent
+ssh "$PI_E2E_SSH_HOST" "set -eu; \
   chmod +x ~/leftover-agent-e2e/leftover-agent; \
   env \
     AGENT_PRINTER_ID=printer-01 \
@@ -143,7 +143,7 @@ Expected evidence:
 ## 7. Start the remote agent
 
 ```bash
-ssh -o IdentitiesOnly=no "$PI_E2E_SSH_HOST" "set -eu; \
+ssh "$PI_E2E_SSH_HOST" "set -eu; \
   rm -f ~/leftover-agent-e2e/agent.log ~/leftover-agent-e2e/agent.pid; \
   nohup env \
     AGENT_PRINTER_ID=printer-01 \
@@ -185,7 +185,7 @@ node --experimental-strip-types .codex/skills/leftover-label-printer-pi-e2e/scri
   --template-version=v1 \
   --timeout-seconds="${PI_E2E_TIMEOUT_SECONDS:-120}" \
   --item-name='Pi E2E Smoke'
-ssh -o IdentitiesOnly=no "$PI_E2E_SSH_HOST" "tail -n 80 ~/leftover-agent-e2e/agent.log"
+ssh "$PI_E2E_SSH_HOST" "tail -n 80 ~/leftover-agent-e2e/agent.log"
 ```
 
 Expected evidence:
@@ -199,7 +199,7 @@ Expected evidence:
 Default cleanup:
 
 ```bash
-ssh -o IdentitiesOnly=no "$PI_E2E_SSH_HOST" "set -eu; \
+ssh "$PI_E2E_SSH_HOST" "set -eu; \
   if [ -f ~/leftover-agent-e2e/agent.pid ]; then kill \"\$(cat ~/leftover-agent-e2e/agent.pid)\" 2>/dev/null || true; fi; \
   rm -f ~/leftover-agent-e2e/agent.pid"
 docker compose --env-file infra/.env -f infra/docker-compose.yml -f infra/docker-compose.dev.yml -f "$OVERRIDE_FILE" down --remove-orphans
