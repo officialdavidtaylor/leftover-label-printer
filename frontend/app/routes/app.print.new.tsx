@@ -5,8 +5,10 @@ import { useFetcher } from 'react-router';
 
 import { submissionFailed, submissionStarted, submissionSucceeded } from '../features/print-creator/print-creator.duck';
 import { toastQueued } from '../features/toast/toast.duck';
+import { ApiError } from '../lib/api/http-client';
 import { createPrintJob } from '../lib/api/print-jobs.client';
-import { requireAuthenticatedSession } from '../lib/auth/route-guards';
+import { signOutLocally } from '../lib/auth/oidc-client';
+import { getReturnToFromUrl, requireAuthenticatedSession } from '../lib/auth/route-guards';
 import { getFrontendEnv } from '../lib/env';
 import { createPrintJobRequestSchema, creatorFormSchema, type CreatorFormValues } from '../lib/schemas/print-jobs';
 import { todayIsoDate } from '../lib/utils/date';
@@ -58,6 +60,18 @@ export async function clientAction({ request }: { request: Request }): Promise<C
       state: response.state,
     };
   } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      await signOutLocally();
+      // React Router actions use thrown Response objects for redirects.
+      // eslint-disable-next-line @typescript-eslint/only-throw-error
+      throw new Response(null, {
+        status: 302,
+        headers: {
+          Location: `/login?${new URLSearchParams({ returnTo: getReturnToFromUrl(request.url) }).toString()}`,
+        },
+      });
+    }
+
     return {
       ok: false,
       code: error instanceof Error && 'code' in error ? String(error.code) : 'submission_failed',

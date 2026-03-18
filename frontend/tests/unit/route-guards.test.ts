@@ -15,6 +15,7 @@ describe('route-guards', () => {
   it('builds a safe returnTo value for protected routes', () => {
     expect(getReturnToFromUrl('http://localhost/app/print/new?from=pwa')).toBe('/app/print/new?from=pwa');
     expect(getReturnToFromUrl('http://localhost/login')).toBe('/app/print/new');
+    expect(getReturnToFromUrl('http://localhost//evil.example')).toBe('/app/print/new');
   });
 
   it('redirects unauthenticated users to login', () => {
@@ -56,6 +57,24 @@ describe('route-guards', () => {
       expect(error).toBeInstanceOf(Response);
       const response = error as Response;
       expect(response.headers.get('Location')).toBe('/app/jobs/job-1');
+    }
+  });
+
+  it('rejects protocol-relative returnTo targets for authenticated users', () => {
+    writeStoredSession({
+      userId: 'user-2',
+      accessToken: 'token-2',
+      expiresAt: Math.floor(Date.now() / 1000) + 300,
+      roles: ['user'],
+    });
+
+    try {
+      redirectAuthenticatedUsers('http://localhost/login?returnTo=%2F%2Fevil.example');
+      throw new Error('expected redirect');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Response);
+      const response = error as Response;
+      expect(response.headers.get('Location')).toBe('/app/print/new');
     }
   });
 });

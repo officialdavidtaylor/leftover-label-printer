@@ -1,16 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { createPrintJob, requireAuthenticatedSession } = vi.hoisted(() => ({
+const { createPrintJob, requireAuthenticatedSession, signOutLocally } = vi.hoisted(() => ({
   createPrintJob: vi.fn(),
   requireAuthenticatedSession: vi.fn(),
+  signOutLocally: vi.fn(),
 }));
 
 vi.mock('../../app/lib/api/print-jobs.client', () => ({
   createPrintJob,
 }));
 
+vi.mock('../../app/lib/auth/oidc-client', () => ({
+  signOutLocally,
+}));
+
 vi.mock('../../app/lib/auth/route-guards', () => ({
   requireAuthenticatedSession,
+  getReturnToFromUrl: (inputUrl: string) => {
+    const url = new URL(inputUrl);
+    return `${url.pathname}${url.search}${url.hash}`;
+  },
 }));
 
 vi.mock('../../app/lib/env', () => ({
@@ -28,11 +37,13 @@ vi.mock('../../app/lib/env', () => ({
 }));
 
 import { clientAction } from '../../app/routes/app.print.new';
+import { ApiError } from '../../app/lib/api/http-client';
 
 describe('print creator clientAction', () => {
   beforeEach(() => {
     createPrintJob.mockReset();
     requireAuthenticatedSession.mockReset();
+    signOutLocally.mockReset();
     requireAuthenticatedSession.mockReturnValue({
       accessToken: 'access-token',
     });
@@ -97,5 +108,37 @@ describe('print creator clientAction', () => {
       code: 'form_validation_error',
       message: 'Check the highlighted fields and try again.',
     });
+  });
+
+  it('clears the local session and redirects to login on auth failures', async () => {
+    createPrintJob.mockRejectedValue(
+      new ApiError(401, {
+        code: 'unauthorized',
+        message: 'Token expired.',
+      })
+    );
+
+    try {
+      await clientAction({
+        request: new Request('http://localhost/app/print/new?source=pwa', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            itemName: 'Chicken soup',
+            datePrepared: '2026-03-18',
+          }),
+        }),
+      });
+      throw new Error('expected auth redirect');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Response);
+      const response = error as Response;
+      expect(response.status).toBe(302);
+      expect(response.headers.get('Location')).toBe('/login?returnTo=%2Fapp%2Fprint%2Fnew%3Fsource%3Dpwa');
+    }
+
+    expect(signOutLocally).toHaveBeenCalledTimes(1);
   });
 });
