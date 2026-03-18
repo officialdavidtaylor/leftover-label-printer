@@ -6,7 +6,11 @@ Thumbs.db
 *~
 
 # Local Codex state
-.codex/
+.codex/*
+!.codex/skills/
+.codex/skills/*
+!.codex/skills/leftover-label-printer-pi-e2e/
+!.codex/skills/leftover-label-printer-pi-e2e/**
 
 # Environment files (keep examples)
 .env
