@@ -8,9 +8,7 @@ Thumbs.db
 # Local Codex state
 .codex/*
 !.codex/skills/
-.codex/skills/*
-!.codex/skills/leftover-label-printer-pi-e2e/
-!.codex/skills/leftover-label-printer-pi-e2e/**
+!.codex/skills/**
 
 # Environment files (keep examples)
 .env
@@ -42,6 +40,9 @@ build/
 **/build/
 .cache/
 *.tsbuildinfo
+.react-router/
+test-results/
+playwright-report/
 
 # Go
 /bin/

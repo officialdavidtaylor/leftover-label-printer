@@ -10,7 +10,8 @@ This stack provides local dependencies required by the architecture:
 The dev overlay extends that base stack with:
 
 5. Backend API
-6. Mock print agent
+6. Frontend PWA
+7. Mock print agent
 
 ## Prerequisites
 
@@ -31,7 +32,7 @@ The dev overlay extends that base stack with:
 2. `make -C infra dev-token`
 3. `make -C infra smoke-dev`
 
-`make -C infra up-dev` starts the dependency stack, provisions MQTT users, bootstraps the Keycloak realm/client/user plus the MinIO bucket, then launches the backend and a mock agent in the dev overlay.
+`make -C infra up-dev` starts the dependency stack, provisions MQTT users, bootstraps the Keycloak realm plus both the public PWA and dev CLI clients, creates the dev user, ensures the MinIO bucket, then launches the backend, frontend, and mock agent in the dev overlay.
 
 `make -C infra dev-token` prints a bearer token whose `iss`, `aud`, `sub`, and top-level `roles` claims match the backend verifier's contract without requiring manual Keycloak setup.
 
@@ -53,6 +54,7 @@ For deliberate failure-path verification, run `make -C infra smoke-dev-failed`. 
 5. MinIO API: `http://localhost:9002`
 6. MinIO console: `http://localhost:9003`
 7. Keycloak: `http://localhost:9000`
+8. Frontend PWA: `http://localhost:3000`
 
 ## Operations
 

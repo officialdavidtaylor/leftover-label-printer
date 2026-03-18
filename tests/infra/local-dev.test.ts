@@ -20,6 +20,8 @@ EMQX_AGENT_MQTT_USERNAME=printer-01
     expect(config.oidcIssuerUrl).toBe('http://localhost:9000/realms/leftover-label-printer');
     expect(config.keycloakBootstrapBaseUrl).toBe('http://127.0.0.1:9000');
     expect(config.devRoles).toEqual(['user']);
+    expect(config.pwaClientId).toBe('leftover-label-printer-pwa');
+    expect(config.frontendBaseUrl).toBe('http://localhost:3000');
     expect(config.printerId).toBe('printer-01');
     expect(config.minioBaseUrl).toBe('http://localhost:9002');
     expect(config.repoRoot).toBe(path.resolve('/tmp/workspace'));

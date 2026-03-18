@@ -1,0 +1,141 @@
+.page {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.page__lead {
+  max-width: 42rem;
+}
+
+.page__eyebrow {
+  margin: 0 0 0.5rem;
+  color: var(--color-accent-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.75rem;
+}
+
+.page__title {
+  margin: 0;
+  font-size: clamp(1.9rem, 6vw, 3.25rem);
+  line-height: 1.05;
+}
+
+.page__description {
+  color: var(--color-ink);
+}
+
+.page__grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.card {
+  padding: 1.2rem;
+  border: 1px solid var(--color-border);
+  border-radius: 1.5rem;
+  background: var(--color-surface-muted);
+  box-shadow: 0 24px 50px var(--color-shadow);
+}
+
+.card__header {
+  margin-bottom: 1rem;
+}
+
+.card__title {
+  margin: 0;
+}
+
+.card__subtitle {
+  margin: 0.3rem 0 0;
+  color: var(--color-ink);
+}
+
+.form {
+  display: grid;
+  gap: 1rem;
+}
+
+.form__field {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.form__label,
+.form__metaLabel,
+.summary__label {
+  color: var(--color-ink);
+  font-size: 0.95rem;
+}
+
+.form__input {
+  min-height: 3.1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(65, 83, 102, 0.18);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.form__meta {
+  display: grid;
+  gap: 0.7rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.form__metaRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.form__error {
+  margin: 0;
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+.form__submit {
+  min-height: 3.2rem;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+  color: #fffaf5;
+  font-weight: 700;
+}
+
+.form__submit:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.summary {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.summary__value {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.summary__copy {
+  margin: 0;
+  color: var(--color-ink);
+}
+
+@media (min-width: 768px) {
+  .page__grid {
+    grid-template-columns: minmax(0, 1.2fr) minmax(18rem, 0.8fr);
+    align-items: start;
+  }
+
+  .card {
+    padding: 1.5rem;
+  }
+}

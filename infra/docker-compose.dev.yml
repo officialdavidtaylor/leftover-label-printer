@@ -52,6 +52,40 @@ services:
       retries: 12
       start_period: 20s
 
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    environment:
+      FRONTEND_PORT: 3000
+      FRONTEND_API_PROXY_TARGET: http://backend:8080
+      VITE_API_BASE_URL: /api
+      VITE_OIDC_CLIENT_ID: ${DEV_OIDC_PWA_CLIENT_ID:-leftover-label-printer-pwa}
+      VITE_OIDC_AUDIENCE: ${DEV_OIDC_AUDIENCE:-leftover-label-printer-api}
+      VITE_OIDC_RESPONSE_TYPE: code
+      VITE_OIDC_USE_PKCE: "true"
+      VITE_DEFAULT_PRINTER_ID: ${DEV_PRINTER_ID:-printer-01}
+      VITE_DEFAULT_TEMPLATE_ID: ${DEV_TEMPLATE_ID:-label-default}
+      VITE_DEFAULT_TEMPLATE_VERSION: ${DEV_TEMPLATE_VERSION:-v1}
+      VITE_OIDC_ISSUER_URL: ${DEV_KEYCLOAK_BASE_URL:-http://localhost:9000}/realms/${DEV_OIDC_REALM:-leftover-label-printer}
+    ports:
+      - "${DEV_FRONTEND_PORT:-3000}:3000"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          node -e "fetch('http://127.0.0.1:3000/login').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
   mock-agent:
     build:
       context: ../agent

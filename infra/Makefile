@@ -55,7 +55,7 @@ up-dev: validate-security
 	@$(COMPOSE_DEV_CMD) up -d --wait mongodb emqx minio keycloak
 	@node --experimental-strip-types ./scripts/bootstrap-emqx-auth.ts "$(ENV_FILE)"
 	@node --experimental-strip-types ./scripts/bootstrap-local-dev.ts "$(ENV_FILE)"
-	@$(COMPOSE_DEV_CMD) up -d --build --wait backend mock-agent
+	@$(COMPOSE_DEV_CMD) up -d --build --wait backend mock-agent frontend
 
 down: install
 	@$(COMPOSE_CMD) down --remove-orphans

@@ -1,0 +1,140 @@
+.page {
+  display: grid;
+  gap: 2.5rem;
+  padding: 1.25rem;
+}
+
+.hero {
+  display: grid;
+  gap: 1.25rem;
+  align-items: stretch;
+}
+
+.hero__copy,
+.hero__panel,
+.valueGrid__card {
+  border: 1px solid var(--color-border);
+  border-radius: 1.5rem;
+  background: var(--color-surface-muted);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 24px 50px var(--color-shadow);
+}
+
+.hero__copy {
+  padding: 1.5rem;
+}
+
+.hero__eyebrow,
+.section__eyebrow,
+.hero__panelLabel {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-accent-strong);
+}
+
+.hero__title,
+.section__title {
+  margin: 0;
+  line-height: 1.05;
+}
+
+.hero__title {
+  font-size: clamp(2.4rem, 6vw, 4.75rem);
+  max-width: 11ch;
+}
+
+.hero__description {
+  max-width: 34rem;
+  color: var(--color-ink);
+  font-size: 1.05rem;
+}
+
+.hero__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hero__primaryAction,
+.hero__secondaryAction {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 3rem;
+  padding: 0.8rem 1.2rem;
+  border-radius: 999px;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.hero__primaryAction {
+  background: var(--color-accent);
+  color: #fffaf5;
+}
+
+.hero__secondaryAction {
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.hero__panel {
+  padding: 1.5rem;
+}
+
+.hero__panelList {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.section {
+  display: grid;
+  gap: 1rem;
+}
+
+.section__header {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.valueGrid {
+  display: grid;
+  gap: 1rem;
+}
+
+.valueGrid__card {
+  padding: 1.1rem;
+}
+
+.valueGrid__text {
+  margin: 0;
+  color: var(--color-ink);
+}
+
+@media (min-width: 768px) {
+  .page {
+    gap: 4rem;
+    padding: 2rem;
+  }
+
+  .hero {
+    grid-template-columns: minmax(0, 1.25fr) minmax(18rem, 0.75fr);
+  }
+
+  .hero__copy,
+  .hero__panel {
+    padding: 2rem;
+  }
+
+  .hero__actions {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .valueGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
