@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 
-import { redirectAuthenticatedUsers } from '../lib/auth/route-guards';
+import { normalizeReturnTo, redirectAuthenticatedUsers } from '../lib/auth/route-guards';
 import { startAuthentication } from '../lib/auth/oidc-client';
 import styles from './login.module.css';
 
@@ -16,7 +16,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
 
-  const returnTo = searchParams.get('returnTo') ?? '/app/print/new';
+  const returnTo = normalizeReturnTo(searchParams.get('returnTo'));
 
   async function handleSignIn() {
     setIsStarting(true);

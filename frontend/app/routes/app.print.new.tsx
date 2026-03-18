@@ -8,7 +8,7 @@ import { toastQueued } from '../features/toast/toast.duck';
 import { ApiError } from '../lib/api/http-client';
 import { createPrintJob } from '../lib/api/print-jobs.client';
 import { signOutLocally } from '../lib/auth/oidc-client';
-import { getReturnToFromUrl, requireAuthenticatedSession } from '../lib/auth/route-guards';
+import { redirectToLogin, requireAuthenticatedSession } from '../lib/auth/route-guards';
 import { getFrontendEnv } from '../lib/env';
 import { createPrintJobRequestSchema, creatorFormSchema, type CreatorFormValues } from '../lib/schemas/print-jobs';
 import { todayIsoDate } from '../lib/utils/date';
@@ -62,14 +62,7 @@ export async function clientAction({ request }: { request: Request }): Promise<C
   } catch (error) {
     if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
       await signOutLocally();
-      // React Router actions use thrown Response objects for redirects.
-      // eslint-disable-next-line @typescript-eslint/only-throw-error
-      throw new Response(null, {
-        status: 302,
-        headers: {
-          Location: `/login?${new URLSearchParams({ returnTo: getReturnToFromUrl(request.url) }).toString()}`,
-        },
-      });
+      redirectToLogin(request.url);
     }
 
     return {

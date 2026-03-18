@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { createPrintJob, requireAuthenticatedSession, signOutLocally } = vi.hoisted(() => ({
+const { createPrintJob, redirectToLogin, requireAuthenticatedSession, signOutLocally } = vi.hoisted(() => ({
   createPrintJob: vi.fn(),
+  redirectToLogin: vi.fn(),
   requireAuthenticatedSession: vi.fn(),
   signOutLocally: vi.fn(),
 }));
@@ -15,11 +16,8 @@ vi.mock('../../app/lib/auth/oidc-client', () => ({
 }));
 
 vi.mock('../../app/lib/auth/route-guards', () => ({
+  redirectToLogin,
   requireAuthenticatedSession,
-  getReturnToFromUrl: (inputUrl: string) => {
-    const url = new URL(inputUrl);
-    return `${url.pathname}${url.search}${url.hash}`;
-  },
 }));
 
 vi.mock('../../app/lib/env', () => ({
@@ -42,10 +40,21 @@ import { ApiError } from '../../app/lib/api/http-client';
 describe('print creator clientAction', () => {
   beforeEach(() => {
     createPrintJob.mockReset();
+    redirectToLogin.mockReset();
     requireAuthenticatedSession.mockReset();
     signOutLocally.mockReset();
     requireAuthenticatedSession.mockReturnValue({
       accessToken: 'access-token',
+    });
+    redirectToLogin.mockImplementation((inputUrl: string) => {
+      // React Router loaders/actions use thrown Response objects for redirects.
+      // eslint-disable-next-line @typescript-eslint/only-throw-error
+      throw new Response(null, {
+        status: 302,
+        headers: {
+          Location: `/login?returnTo=${encodeURIComponent(new URL(inputUrl).pathname + new URL(inputUrl).search)}`,
+        },
+      });
     });
     vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue('11111111-1111-4111-8111-111111111111');
   });
@@ -140,5 +149,6 @@ describe('print creator clientAction', () => {
     }
 
     expect(signOutLocally).toHaveBeenCalledTimes(1);
+    expect(redirectToLogin).toHaveBeenCalledWith('http://localhost/app/print/new?source=pwa');
   });
 });

@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const signinRedirectCallback = vi.fn();
+const signinRedirect = vi.fn();
 const removeUser = vi.fn();
 
 vi.mock('oidc-client-ts', () => {
   class UserManager {
     clearStaleState = vi.fn();
-    signinRedirect = vi.fn();
+    signinRedirect = signinRedirect;
     signinRedirectCallback = signinRedirectCallback;
     removeUser = removeUser;
   }
@@ -34,7 +35,7 @@ vi.mock('../../app/lib/env', () => ({
   }),
 }));
 
-import { completeAuthentication, resetOidcClient } from '../../app/lib/auth/oidc-client';
+import { completeAuthentication, resetOidcClient, startAuthentication } from '../../app/lib/auth/oidc-client';
 import { readStoredSession } from '../../app/lib/auth/session-storage';
 
 function createUnsignedToken(payload: Record<string, unknown>): string {
@@ -45,8 +46,20 @@ describe('completeAuthentication', () => {
     window.localStorage.clear();
     window.sessionStorage.clear();
     resetOidcClient();
+    signinRedirect.mockReset();
     signinRedirectCallback.mockReset();
     removeUser.mockReset();
+  });
+
+  it('normalizes the return target before starting authentication', async () => {
+    signinRedirect.mockResolvedValue(undefined);
+
+    await expect(startAuthentication('//evil.example')).rejects.toThrow('OIDC redirect did not leave the page');
+    expect(signinRedirect).toHaveBeenCalledWith({
+      state: {
+        returnTo: '/app/print/new',
+      },
+    });
   });
 
   it('normalizes the oidc callback result and persists the session', async () => {
@@ -101,5 +114,28 @@ describe('completeAuthentication', () => {
       userId: 'user-123',
       roles: ['user'],
     });
+  });
+
+  it('normalizes the callback return target before redirecting back into the app', async () => {
+    signinRedirectCallback.mockResolvedValue({
+      access_token: createUnsignedToken({
+        sub: 'user-123',
+        roles: ['user'],
+      }),
+      id_token: 'id-token',
+      expires_at: Math.floor(Date.now() / 1000) + 600,
+      profile: {
+        sub: 'user-123',
+        name: 'Kitchen Operator',
+        email: 'user@example.com',
+      },
+      state: {
+        returnTo: '//evil.example',
+      },
+    });
+
+    const result = await completeAuthentication('http://localhost/auth/callback?code=test');
+
+    expect(result.returnTo).toBe('/app/print/new');
   });
 });

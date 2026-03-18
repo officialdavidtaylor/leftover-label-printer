@@ -5,9 +5,9 @@ import { store } from '../../store';
 import type { AuthSession } from '../schemas/auth';
 import { clearStoredSession, readStoredSession } from './session-storage';
 
-const DEFAULT_AUTHENTICATED_ROUTE = '/app/print/new';
+export const DEFAULT_AUTHENTICATED_ROUTE = '/app/print/new';
 
-function normalizeReturnTo(value: string | null | undefined): string {
+export function normalizeReturnTo(value: string | null | undefined): string {
   if (typeof value !== 'string') {
     return DEFAULT_AUTHENTICATED_ROUTE;
   }
@@ -39,6 +39,12 @@ export function getReturnToFromUrl(inputUrl: string): string {
   return normalizeReturnTo(value);
 }
 
+export function redirectToLogin(inputUrl: string): never {
+  // React Router loaders/actions use thrown Response objects for redirects.
+  // eslint-disable-next-line @typescript-eslint/only-throw-error
+  throw buildLoginRedirect(getReturnToFromUrl(inputUrl));
+}
+
 export function hydrateAuthFromStorage(): AuthSession | null {
   const session = readStoredSession();
 
@@ -55,9 +61,7 @@ export function hydrateAuthFromStorage(): AuthSession | null {
 export function requireAuthenticatedSession(inputUrl: string): AuthSession {
   const session = hydrateAuthFromStorage();
   if (!session) {
-    // React Router loaders/actions use thrown Response objects for redirects.
-    // eslint-disable-next-line @typescript-eslint/only-throw-error
-    throw buildLoginRedirect(getReturnToFromUrl(inputUrl));
+    redirectToLogin(inputUrl);
   }
 
   return session;

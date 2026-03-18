@@ -4,6 +4,7 @@ import { authHydrated, authSignedOut } from '../../features/auth/auth.duck';
 import { store } from '../../store';
 import { getFrontendEnv } from '../env';
 import { authSessionSchema, type AuthSession } from '../schemas/auth';
+import { normalizeReturnTo } from './route-guards';
 import { clearStoredSession, writeStoredSession } from './session-storage';
 
 let userManager: UserManager | null = null;
@@ -96,7 +97,7 @@ export async function startAuthentication(returnTo: string): Promise<never> {
   await manager.clearStaleState();
   await manager.signinRedirect({
     state: {
-      returnTo,
+      returnTo: normalizeReturnTo(returnTo),
     },
   });
 
@@ -111,14 +112,9 @@ export async function completeAuthentication(currentUrl: string): Promise<{ sess
   writeStoredSession(session);
   store.dispatch(authHydrated(session));
 
-  const returnTo =
-    typeof user.state === 'object' &&
-    user.state !== null &&
-    'returnTo' in user.state &&
-    typeof user.state.returnTo === 'string' &&
-    user.state.returnTo.startsWith('/')
-      ? user.state.returnTo
-      : '/app/print/new';
+  const rawReturnTo =
+    typeof user.state === 'object' && user.state !== null && 'returnTo' in user.state ? user.state.returnTo : null;
+  const returnTo = normalizeReturnTo(typeof rawReturnTo === 'string' ? rawReturnTo : null);
 
   return { session, returnTo };
 }

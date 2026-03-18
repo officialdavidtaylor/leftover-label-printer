@@ -3,8 +3,10 @@ import { Link, useLoaderData, useRevalidator } from 'react-router';
 
 import { jobStatusLoaded, pollingSettled, pollingStarted } from '../features/job-status/job-status.duck';
 import { useJobStatusPolling } from '../features/job-status/use-job-status-polling';
+import { ApiError } from '../lib/api/http-client';
 import { getPrintJob } from '../lib/api/print-jobs.client';
-import { requireAuthenticatedSession } from '../lib/auth/route-guards';
+import { signOutLocally } from '../lib/auth/oidc-client';
+import { redirectToLogin, requireAuthenticatedSession } from '../lib/auth/route-guards';
 import { isTerminalPrintState } from '../lib/utils/date';
 import { useAppDispatch } from '../store/hooks';
 import styles from './app.jobs.$jobId.module.css';
@@ -37,6 +39,11 @@ export async function clientLoader({
       job,
     };
   } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      await signOutLocally();
+      redirectToLogin(request.url);
+    }
+
     return {
       ok: false,
       code: error instanceof Error && 'code' in error ? String(error.code) : 'job_lookup_failed',
