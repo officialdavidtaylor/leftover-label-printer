@@ -33,12 +33,17 @@ jobs:
           go-version-file: agent/go.mod
           cache-dependency-path: agent/go.mod
 
-      - name: Setup Node (backend)
-        if: matrix.service == 'backend'
+      - name: Setup Node (frontend/backend)
+        if: matrix.service == 'frontend' || matrix.service == 'backend'
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: ${{ matrix.service == 'frontend' && 'frontend/package-lock.json' || 'package-lock.json' }}
+
+      - name: Install dependencies (frontend)
+        if: matrix.service == 'frontend'
+        run: npm ci --prefix frontend
 
       - name: Install dependencies (backend)
         if: matrix.service == 'backend'
